@@ -87,14 +87,14 @@ CREATE TABLE `unread_announcements`
 
 CREATE TABLE user_gpas (
     user_id char(26) PRIMARY KEY,
-    gpa DECIMAL(5, 2)
+    gpa DECIMAL(10, 8)
 );
 CREATE TRIGGER after_submission_update
     AFTER UPDATE ON submissions
     FOR EACH ROW
 BEGIN
-    DECLARE total_credits DECIMAL(5,2);
-    DECLARE total_score DECIMAL(5,2);
+    DECLARE total_credits DECIMAL(10, 8);
+    DECLARE total_score DECIMAL(10, 8);
 
     -- 合計クレジットを計算
     SELECT SUM(courses.credit) INTO total_credits
