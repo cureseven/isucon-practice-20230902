@@ -40,11 +40,11 @@ type handlers struct {
 
 func main() {
 	e := echo.New()
-	//e.Debug = GetEnv("DEBUG", "") == "true"
+	e.Debug = GetEnv("DEBUG", "") == "true"
 	e.Server.Addr = fmt.Sprintf(":%v", GetEnv("PORT", "7000"))
 	e.HideBanner = true
 
-	//e.Use(middleware.Logger())
+	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
 	e.Use(session.Middleware(sessions.NewCookieStore([]byte("trapnomura"))))
 
@@ -820,12 +820,18 @@ func (h *handlers) FetchGPAs(c echo.Context) ([]float64, error) {
 		return nil, c.NoContent(http.StatusInternalServerError)
 	}
 
-	// Calculate GPA for each student
+	// 各学生に対してGPAを計算
 	for i, uc := range userCredits {
+		if i >= len(weightedScores) {
+			c.Logger().Errorf("userCredits と weightedScores の長さが一致しません。 インデックス：%d、UserID：%d", i, uc.UserID)
+			continue
+		}
+
 		if uc.Credits == 0 {
 			gpas = append(gpas, 0)
 		} else {
 			gpa := weightedScores[i] / float64(uc.Credits)
+			c.Logger().Infof("UserID: %d の計算されたGPAは %f です", uc.UserID, gpa)
 			gpas = append(gpas, gpa)
 		}
 	}
