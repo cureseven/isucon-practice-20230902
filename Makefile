@@ -22,6 +22,7 @@ truncate-logs:
 	ssh s3 "sudo truncate --size 0 /var/log/mysql/mysql-slow.log"
 	ssh s3 "sudo chmod 777 /var/log/mysql/mysql-slow.log"
 	sudo journalctl --vacuum-size=1K
-
+kataribe: 
+	cd ../ && sudo cat /var/log/nginx/access.log  | ./kataribe	
 bench:
 	ssh bench "cd ./benchmarker/ && ./bin/benchmarker -target 172.31.13.72:443 -tls"
