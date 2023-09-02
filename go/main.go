@@ -950,8 +950,7 @@ FROM
 WHERE
     users.type = 'student'
 GROUP BY users.id
-ORDER BY users.id
-ON DUPLICATE KEY UPDATE gpa = VALUES(gpa);`
+ORDER BY users.id`
 	var gpaDatas []GPAData
 	rows, err := db.Queryx(q)
 	if err != nil {
