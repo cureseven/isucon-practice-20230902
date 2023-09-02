@@ -99,18 +99,36 @@ BEGIN
         -- 今回更新されたコースを受講しているユーザについて、全てのclosedコースを考慮してGPAを再計算し、user_gpasテーブルにupsert
         INSERT INTO user_gpas (user_id, gpa)
         SELECT
-            regs.user_id,
-            IFNULL(SUM(subs.score * co.credit) / 100 / SUM(co.credit), 0) AS new_gpa
+            users.id as user_id,
+            IFNULL(
+                    SUM(`submissions`.`score` * `courses`.`credit`),
+                    0
+                ) / 100 / `credits`.`credits` AS `gpa`
         FROM
-            -- 更新されたコースに関連するユーザのリストを取得
-            (SELECT DISTINCT user_id FROM registrations WHERE course_id = NEW.id) AS regs
-        -- 上記のユーザが受講している全てのclosedステータスのコースをJOIN
-        JOIN registrations ON regs.user_id = registrations.user_id
-        JOIN courses co ON registrations.course_id = co.id AND co.status = 'closed'
-        LEFT JOIN classes cl ON co.id = cl.course_id
-        LEFT JOIN submissions subs ON regs.user_id = subs.user_id AND subs.class_id = cl.id
+            `users`
+                JOIN (
+                SELECT
+                    `users`.`id` AS `user_id`,
+                    SUM(`courses`.`credit`) AS `credits`
+                FROM
+                    `users`
+                        JOIN `registrations` ON `users`.`id` = `registrations`.`user_id`
+                        JOIN `courses` ON `registrations`.`course_id` = `courses`.`id`
+                        AND `courses`.`status` = 'closed'
+                GROUP BY
+                    `users`.`id`
+            ) AS `credits` ON `credits`.`user_id` = `users`.`id`
+            JOIN `registrations` ON `users`.`id` = `registrations`.`user_id`
+            JOIN `courses` ON `registrations`.`course_id` = `courses`.`id`
+            AND `courses`.`status` = 'closed'
+            LEFT JOIN `classes` ON `courses`.`id` = `classes`.`course_id`
+            LEFT JOIN `submissions` ON `users`.`id` = `submissions`.`user_id` AND `submissions`.`class_id` = `classes`.`id`
+        WHERE
+                `users`.`type` = 'student' AND users.id IN (SELECT DISTINCT user_id AS id
+                                                            FROM registrations
+                                                            WHERE course_id = NEW.id)
         GROUP BY
-            regs.user_id
+            `users`.`id`
         ON DUPLICATE KEY UPDATE gpa = VALUES(gpa);
 
     END IF;
