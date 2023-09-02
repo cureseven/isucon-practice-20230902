@@ -1063,13 +1063,13 @@ func (h *handlers) SetCourseStatus(c echo.Context) error {
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
-	if req.Status == StatusClosed {
-		UpdateCacheForCourse(tx, courseID)
-	}
-
 	if err := tx.Commit(); err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
+	}
+
+	if req.Status == StatusClosed {
+		UpdateCacheForCourse(h.DB, courseID)
 	}
 
 	return c.NoContent(http.StatusOK)
@@ -1079,7 +1079,7 @@ var weightedScoresCache sync.Map // キー: courses.id, 値: []float64
 var userCreditsCache sync.Map    // キー: courses.id, 値: []struct
 var updateMutex sync.Mutex
 
-func UpdateCacheForCourse(DB *sqlx.Tx, courseID string) error {
+func UpdateCacheForCourse(DB *sqlx.DB, courseID string) error {
 	updateMutex.Lock()
 	defer updateMutex.Unlock()
 
