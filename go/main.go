@@ -593,39 +593,55 @@ func (h *handlers) GetGrades(c echo.Context) error {
 			return c.NoContent(http.StatusInternalServerError)
 		}
 
-		// 講義毎の成績計算処理
+		// 先にclassIDの配列を作成
+		// 先にclassIDの配列を作成
+		var classIDs []string
+		for _, class := range classes {
+			classIDs = append(classIDs, class.ID)
+		}
+
+		// submissionsCountを一度のクエリで取得
+		submissionsCounts, err := fetchSubmissionCounts(h.DB, classIDs)
+		if err != nil {
+			c.Logger().Error(err)
+			return c.NoContent(http.StatusInternalServerError)
+		}
+
+		// myScoresを一度のクエリで取得
+		myScores, err := fetchMyScores(h.DB, userID, classIDs)
+		if err != nil {
+			c.Logger().Error(err)
+			return c.NoContent(http.StatusInternalServerError)
+		}
+
+		// データの処理
 		classScores := make([]ClassScore, 0, len(classes))
 		var myTotalScore int
 		for _, class := range classes {
 			var submissionsCount int
-			if err := h.DB.Get(&submissionsCount, "SELECT COUNT(*) FROM `submissions` WHERE `class_id` = ?", class.ID); err != nil {
-				c.Logger().Error(err)
-				return c.NoContent(http.StatusInternalServerError)
+			for _, sc := range submissionsCounts {
+				if sc.ClassID == class.ID {
+					submissionsCount = sc.Count
+					break
+				}
 			}
 
-			var myScore sql.NullInt64
-			if err := h.DB.Get(&myScore, "SELECT `submissions`.`score` FROM `submissions` WHERE `user_id` = ? AND `class_id` = ?", userID, class.ID); err != nil && err != sql.ErrNoRows {
-				c.Logger().Error(err)
-				return c.NoContent(http.StatusInternalServerError)
-			} else if err == sql.ErrNoRows || !myScore.Valid {
-				classScores = append(classScores, ClassScore{
-					ClassID:    class.ID,
-					Part:       class.Part,
-					Title:      class.Title,
-					Score:      nil,
-					Submitters: submissionsCount,
-				})
-			} else {
-				score := int(myScore.Int64)
-				myTotalScore += score
-				classScores = append(classScores, ClassScore{
-					ClassID:    class.ID,
-					Part:       class.Part,
-					Title:      class.Title,
-					Score:      &score,
-					Submitters: submissionsCount,
-				})
+			var myScore *int
+			for _, ms := range myScores {
+				if ms.ClassID == class.ID {
+					myScore = &ms.Score
+					myTotalScore += ms.Score
+					break
+				}
 			}
+
+			classScores = append(classScores, ClassScore{
+				ClassID:    class.ID,
+				Part:       class.Part,
+				Title:      class.Title,
+				Score:      myScore,
+				Submitters: submissionsCount,
+			})
 		}
 
 		// この科目を履修している学生のTotalScore一覧を取得
@@ -700,6 +716,44 @@ func (h *handlers) GetGrades(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, res)
+}
+
+func fetchSubmissionCounts(db *sqlx.DB, classIDs []string) ([]struct {
+	ClassID string `db:"class_id"`
+	Count   int    `db:"COUNT(*)"`
+}, error) {
+	query, args, err := sqlx.In("SELECT class_id, COUNT(*) FROM submissions WHERE class_id IN (?) GROUP BY class_id", classIDs)
+	if err != nil {
+		return nil, err
+	}
+	query = db.Rebind(query)
+	var counts []struct {
+		ClassID string `db:"class_id"`
+		Count   int    `db:"COUNT(*)"`
+	}
+	if err := db.Select(&counts, query, args...); err != nil {
+		return nil, err
+	}
+	return counts, nil
+}
+
+func fetchMyScores(db *sqlx.DB, userID string, classIDs []string) ([]struct {
+	ClassID string `db:"class_id"`
+	Score   int    `db:"score"`
+}, error) {
+	query, args, err := sqlx.In("SELECT class_id, score FROM submissions WHERE user_id = ? AND class_id IN (?)", userID, classIDs)
+	if err != nil {
+		return nil, err
+	}
+	query = db.Rebind(query)
+	var scores []struct {
+		ClassID string `db:"class_id"`
+		Score   int    `db:"score"`
+	}
+	if err := db.Select(&scores, query, args...); err != nil && err != sql.ErrNoRows {
+		return nil, err
+	}
+	return scores, nil
 }
 
 // ---------- Courses API ----------
