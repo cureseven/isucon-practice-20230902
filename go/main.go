@@ -973,8 +973,7 @@ ON DUPLICATE KEY UPDATE gpa = VALUES(gpa);`
 	}
 
 	insertQuery := `
-INSERT INTO user_gpas (user_id, gpa) VALUES ` + strings.Join(valuesStrings, ",") + `
-ON DUPLICATE KEY UPDATE gpa = VALUES(gpa)`
+INSERT INTO user_gpas (user_id, gpa) VALUES ` + strings.Join(valuesStrings, ",") + ` ON DUPLICATE KEY UPDATE gpa = VALUES(gpa)`
 
 	_, err = db.Exec(insertQuery, valuesArgs...)
 	if err != nil {
