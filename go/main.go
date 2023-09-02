@@ -786,7 +786,7 @@ func (h *handlers) FetchGPAs(c echo.Context) ([]float64, error) {
 	}
 
 	// 各生徒についてGPAを計算
-	userCreditsMap := make(map[int]float64)
+	userCreditsMap := make(map[string]float64)
 	for _, data := range creditsData {
 		userCreditsMap[data.UserID] = data.Credits
 	}
