@@ -964,11 +964,21 @@ ON DUPLICATE KEY UPDATE gpa = VALUES(gpa);`
 		return
 	}
 
-	insertQuery := `INSERT INTO user_gpas (user_id, gpa) VALUES (:user_id, :gpa) ON DUPLICATE KEY UPDATE gpa = VALUES(gpa)`
-	_, err = db.NamedExec(insertQuery, gpaDatas)
+	valuesStrings := make([]string, 0, len(gpaDatas))
+	valuesArgs := make([]interface{}, 0, len(gpaDatas)*2)
+
+	for _, data := range gpaDatas {
+		valuesStrings = append(valuesStrings, "(?, ?)")
+		valuesArgs = append(valuesArgs, data.UserID, data.GPA)
+	}
+
+	insertQuery := `
+INSERT INTO user_gpas (user_id, gpa) VALUES ` + strings.Join(valuesStrings, ",") + `
+ON DUPLICATE KEY UPDATE gpa = VALUES(gpa)`
+
+	_, err = db.Exec(insertQuery, valuesArgs...)
 	if err != nil {
-		log.Println("Failed to upsert GPA", err)
-		return
+		log.Println("Failed to execute bulk upsert:", err)
 	}
 }
 
