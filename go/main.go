@@ -918,9 +918,13 @@ func (h *handlers) GetCourseDetail(c echo.Context) error {
 	return c.JSON(http.StatusOK, res)
 }
 
-func updateGpa(db sqlx.Execer) {
+func updateGpa(db *sqlx.Tx) {
+	type GPAData struct {
+		UserID string  `db:"user_id"`
+		GPA    float64 `db:"gpa"`
+	}
+
 	q := `
-INSERT INTO user_gpas (user_id, gpa)
 SELECT
     users.id as user_id,
     IFNULL(SUM(submissions.score * courses.credit), 0) / 100 / credits.credits AS gpa
@@ -947,10 +951,23 @@ WHERE
 GROUP BY users.id
 ORDER BY users.id
 ON DUPLICATE KEY UPDATE gpa = VALUES(gpa);`
-
-	_, err := db.Exec(q)
+	var gpaDatas []GPAData
+	rows, err := db.Queryx(q)
+	defer rows.Close()
 	if err != nil {
-		log.Println(err)
+		log.Println("Failed to fetch GPA data:", err)
+		return
+	}
+	if err := rows.Scan(&gpaDatas); err != nil {
+		log.Println("Failed to scan GPA data:", err)
+		return
+	}
+
+	insertQuery := `INSERT INTO user_gpas (user_id, gpa) VALUES (:user_id, :gpa) ON DUPLICATE KEY UPDATE gpa = VALUES(gpa)`
+	_, err = db.NamedExec(insertQuery, gpaDatas)
+	if err != nil {
+		log.Println("Failed to upsert GPA", err)
+		return
 	}
 }
 
