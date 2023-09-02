@@ -49,7 +49,7 @@ func main() {
 	e.Use(session.Middleware(sessions.NewCookieStore([]byte("trapnomura"))))
 
 	db, _ := GetDB(false)
-	db.SetMaxOpenConns(200)
+	db.SetMaxOpenConns(100)
 
 	h := &handlers{
 		DB: db,
@@ -781,37 +781,61 @@ func (h *handlers) FetchGPAs(c echo.Context) ([]float64, error) {
 	var gpas []float64
 	cacheKey := "gpas"
 
-	// キャッシュからデータを取得
+	// Check cache
 	if cachedGpas, found := cache.Load(cacheKey); found {
 		if time.Now().Before(cachedGpas.(*CacheGPA).Expiration) {
-			gpas = cachedGpas.(*CacheGPA).gpas
+			return cachedGpas.(*CacheGPA).gpas, nil
 		}
 	}
-	if len(gpas) == 0 {
-		query := "SELECT IFNULL(SUM(`submissions`.`score` * `courses`.`credit`), 0) / 100 / `credits`.`credits` AS `gpa`" +
-			" FROM `users`" +
-			" JOIN (" +
-			"     SELECT `users`.`id` AS `user_id`, SUM(`courses`.`credit`) AS `credits`" +
-			"     FROM `users`" +
-			"     JOIN `registrations` ON `users`.`id` = `registrations`.`user_id`" +
-			"     JOIN `courses` ON `registrations`.`course_id` = `courses`.`id` AND `courses`.`status` = ?" +
-			"     GROUP BY `users`.`id`" +
-			" ) AS `credits` ON `credits`.`user_id` = `users`.`id`" +
-			" JOIN `registrations` ON `users`.`id` = `registrations`.`user_id`" +
-			" JOIN `courses` ON `registrations`.`course_id` = `courses`.`id` AND `courses`.`status` = ?" +
-			" LEFT JOIN `classes` ON `courses`.`id` = `classes`.`course_id`" +
-			" LEFT JOIN `submissions` ON `users`.`id` = `submissions`.`user_id` AND `submissions`.`class_id` = `classes`.`id`" +
-			" WHERE `users`.`type` = ?" +
-			" GROUP BY `users`.`id`"
-		if err := h.DB.Select(&gpas, query, StatusClosed, StatusClosed, Student); err != nil {
-			c.Logger().Error(err)
-			return nil, c.NoContent(http.StatusInternalServerError)
-		}
-		cache.Store(cacheKey, &CacheGPA{
-			gpas:       gpas,
-			Expiration: time.Now().Add(900 * time.Millisecond),
-		})
+
+	// First Query: Calculate sum of credits for each user
+	var userCredits []struct {
+		UserID  int
+		Credits int
 	}
+
+	query1 := "SELECT users.id AS user_id, SUM(courses.credit) AS creditsFROM users " +
+		"JOIN registrations ON users.id = registrations.user_id" +
+		"JOIN courses ON registrations.course_id = courses.id AND courses.status = ?" +
+		"GROUP BY users.id"
+
+	if err := h.DB.Select(&userCredits, query1, StatusClosed); err != nil {
+		c.Logger().Error(err)
+		return nil, c.NoContent(http.StatusInternalServerError)
+	}
+
+	// Second Query: Calculate GPA based on the weighted scores for each user
+	query2 := "SELECT IFNULL(SUM(submissions.score * courses.credit), 0) / 100 AS weighted_score" +
+		"FROM users" +
+		"JOIN registrations ON users.id = registrations.user_id" +
+		"JOIN courses ON registrations.course_id = courses.id AND courses.status = ?" +
+		"LEFT JOIN classes ON courses.id = classes.course_id" +
+		"LEFT JOIN submissions ON users.id = submissions.user_id AND submissions.class_id = classes.id" +
+		"WHERE users.type = ?" +
+		"GROUP BY users.id"
+
+	var weightedScores []float64
+	if err := h.DB.Select(&weightedScores, query2, StatusClosed, Student); err != nil {
+		c.Logger().Error(err)
+		return nil, c.NoContent(http.StatusInternalServerError)
+	}
+
+	// Calculate GPA for each student
+	for i, uc := range userCredits {
+		if uc.Credits == 0 {
+			gpas = append(gpas, 0)
+		} else {
+			gpa := weightedScores[i] / float64(uc.Credits)
+			gpas = append(gpas, gpa)
+		}
+	}
+
+	// Update the cache
+	cache.Store(cacheKey, &CacheGPA{
+		gpas:       gpas,
+		Expiration: time.Now().Add(900 * time.Millisecond),
+	})
+
 	return gpas, nil
 }
 
