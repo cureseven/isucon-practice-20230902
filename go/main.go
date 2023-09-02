@@ -787,31 +787,57 @@ func (h *handlers) FetchGPAs(c echo.Context) ([]float64, error) {
 			gpas = cachedGpas.(*CacheGPA).gpas
 		}
 	}
+
 	if len(gpas) == 0 {
-		query := "SELECT IFNULL(SUM(`submissions`.`score` * `courses`.`credit`), 0) / 100 / `credits`.`credits` AS `gpa`" +
-			" FROM `users`" +
-			" JOIN (" +
-			"     SELECT `users`.`id` AS `user_id`, SUM(`courses`.`credit`) AS `credits`" +
-			"     FROM `users`" +
-			"     JOIN `registrations` ON `users`.`id` = `registrations`.`user_id`" +
-			"     JOIN `courses` ON `registrations`.`course_id` = `courses`.`id` AND `courses`.`status` = ?" +
-			"     GROUP BY `users`.`id`" +
-			" ) AS `credits` ON `credits`.`user_id` = `users`.`id`" +
-			" JOIN `registrations` ON `users`.`id` = `registrations`.`user_id`" +
-			" JOIN `courses` ON `registrations`.`course_id` = `courses`.`id` AND `courses`.`status` = ?" +
-			" LEFT JOIN `classes` ON `courses`.`id` = `classes`.`course_id`" +
-			" LEFT JOIN `submissions` ON `users`.`id` = `submissions`.`user_id` AND `submissions`.`class_id` = `classes`.`id`" +
-			" WHERE `users`.`type` = ?" +
-			" GROUP BY `users`.`id`"
-		if err := h.DB.Select(&gpas, query, StatusClosed, StatusClosed, Student); err != nil {
+		// 各生徒の取得単位数の取得
+		var credits []struct {
+			UserID  int     `db:"user_id"`
+			Credits float64 `db:"credits"`
+		}
+		query1 := `
+			SELECT users.id AS user_id, SUM(courses.credit) AS credits
+			FROM users
+			JOIN registrations ON users.id = registrations.user_id
+			JOIN courses ON registrations.course_id = courses.id AND courses.status = ?
+			GROUP BY users.id`
+		if err := h.DB.Select(&credits, query1, StatusClosed); err != nil {
 			c.Logger().Error(err)
 			return nil, c.NoContent(http.StatusInternalServerError)
 		}
+
+		// 各生徒の重み付けされたスコアの取得
+		var weightedScores []struct {
+			UserID        int     `db:"user_id"`
+			WeightedScore float64 `db:"weighted_score"`
+		}
+		query2 := `
+			SELECT submissions.user_id AS user_id, IFNULL(SUM(submissions.score * courses.credit), 0) AS weighted_score
+			FROM submissions
+			JOIN classes ON classes.id = submissions.class_id
+			JOIN courses ON classes.course_id = courses.id AND courses.status = ?
+			GROUP BY submissions.user_id`
+		if err := h.DB.Select(&weightedScores, query2, StatusClosed); err != nil {
+			c.Logger().Error(err)
+			return nil, c.NoContent(http.StatusInternalServerError)
+		}
+
+		// GPAの計算
+		for _, credit := range credits {
+			for _, weightedScore := range weightedScores {
+				if credit.UserID == weightedScore.UserID {
+					gpa := weightedScore.WeightedScore / 100 / credit.Credits
+					gpas = append(gpas, gpa)
+				}
+			}
+		}
+
+		// キャッシュの更新
 		cache.Store(cacheKey, &CacheGPA{
 			gpas:       gpas,
 			Expiration: time.Now().Add(900 * time.Millisecond),
 		})
 	}
+
 	return gpas, nil
 }
 
