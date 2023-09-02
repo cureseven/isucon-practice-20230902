@@ -779,51 +779,37 @@ func (h *handlers) getCourseResults(c echo.Context, registeredCourses []Course, 
 
 func (h *handlers) FetchGPAs(c echo.Context) ([]float64, error) {
 	var gpas []float64
-	cacheKey := "gpas"
-
-	// Check cache
-	if cachedGpas, found := cache.Load(cacheKey); found {
-		if time.Now().Before(cachedGpas.(*CacheGPA).Expiration) {
-			return cachedGpas.(*CacheGPA).gpas, nil
-		}
-	}
-
-	// First Query: Calculate sum of credits for each user
 	var userCredits []struct {
 		UserID  string `db:"user_id"`
 		Credits int    `db:"credits"`
 	}
-
-	query1 := "SELECT users.id AS user_id, SUM(courses.credit) AS credits FROM users " +
-		"JOIN registrations ON users.id = registrations.user_id " +
-		"JOIN courses ON registrations.course_id = courses.id AND courses.status = ? " +
-		"GROUP BY users.id "
-
-	if err := h.DB.Select(&userCredits, query1, StatusClosed); err != nil {
-		c.Logger().Error(err)
-		return nil, c.NoContent(http.StatusInternalServerError)
-	}
-
-	// Second Query: Calculate GPA based on the weighted scores for each user
-	query2 := "SELECT IFNULL(SUM(submissions.score * courses.credit), 0) / 100 AS weighted_score " +
-		"FROM users " +
-		"JOIN registrations ON users.id = registrations.user_id " +
-		"JOIN courses ON registrations.course_id = courses.id AND courses.status = ? " +
-		"LEFT JOIN classes ON courses.id = classes.course_id " +
-		"LEFT JOIN submissions ON users.id = submissions.user_id AND submissions.class_id = classes.id " +
-		"WHERE users.type = ? " +
-		"GROUP BY users.id "
-
 	var weightedScores []float64
-	if err := h.DB.Select(&weightedScores, query2, StatusClosed, Student); err != nil {
-		c.Logger().Error(err)
+
+	// Gather cached userCredits
+	userCreditsCache.Range(func(key, value interface{}) bool {
+		for _, uc := range value.([]struct {
+			UserID  string `db:"user_id"`
+			Credits int    `db:"credits"`
+		}) {
+			userCredits = append(userCredits, uc)
+		}
+		return true
+	})
+
+	// Gather cached weightedScores
+	weightedScoresCache.Range(func(key, value interface{}) bool {
+		weightedScores = append(weightedScores, value.([]float64)...)
+		return true
+	})
+
+	if len(userCredits) == 0 || len(weightedScores) == 0 {
+		c.Logger().Error("Cache is empty, something went wrong")
 		return nil, c.NoContent(http.StatusInternalServerError)
 	}
 
-	// 各学生に対してGPAを計算
 	for i, uc := range userCredits {
 		if i >= len(weightedScores) {
-			c.Logger().Errorf("userCredits と weightedScores の長さが一致しません。 インデックス：%d、UserID：%d", i, uc.UserID)
+			c.Logger().Errorf("userCredits and weightedScores do not match in length. Index: %d, UserID: %s", i, uc.UserID)
 			continue
 		}
 
@@ -831,16 +817,9 @@ func (h *handlers) FetchGPAs(c echo.Context) ([]float64, error) {
 			gpas = append(gpas, 0)
 		} else {
 			gpa := weightedScores[i] / float64(uc.Credits)
-			c.Logger().Infof("UserID: %d の計算されたGPAは %f です", uc.UserID, gpa)
 			gpas = append(gpas, gpa)
 		}
 	}
-
-	// Update the cache
-	//cache.Store(cacheKey, &CacheGPA{
-	//	gpas:       gpas,
-	//	Expiration: time.Now().Add(900 * time.Millisecond),
-	//})
 
 	return gpas, nil
 }
@@ -1087,7 +1066,71 @@ func (h *handlers) SetCourseStatus(c echo.Context) error {
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
+	if req.Status == StatusClosed {
+		UpdateCacheForCourse(h.DB, courseID)
+	}
+
 	return c.NoContent(http.StatusOK)
+}
+
+var weightedScoresCache sync.Map // キー: courses.id, 値: []float64
+var userCreditsCache sync.Map    // キー: courses.id, 値: []struct
+var updateMutex sync.Mutex
+
+func UpdateCacheForCourse(DB *sqlx.DB, courseID string) error {
+	updateMutex.Lock()
+	defer updateMutex.Unlock()
+
+	var userCredits []struct {
+		UserID  string `db:"user_id"`
+		Credits int    `db:"credits"`
+	}
+
+	// Query for userCredits
+	query1 := "SELECT users.id AS user_id, SUM(courses.credit) AS credits FROM users " +
+		"JOIN registrations ON users.id = registrations.user_id " +
+		"JOIN courses ON registrations.course_id = courses.id AND courses.id = ? " +
+		"GROUP BY users.id "
+
+	if err := DB.Select(&userCredits, query1, courseID); err != nil {
+		return err
+	}
+
+	// Query for weightedScores
+	var weightedScores []float64
+	query2 := "SELECT IFNULL(SUM(submissions.score * courses.credit), 0) / 100 AS weighted_score " +
+		"FROM users " +
+		"JOIN registrations ON users.id = registrations.user_id " +
+		"JOIN courses ON registrations.course_id = courses.id AND courses.id = ? " +
+		"LEFT JOIN classes ON courses.id = classes.course_id " +
+		"LEFT JOIN submissions ON users.id = submissions.user_id AND submissions.class_id = classes.id " +
+		"WHERE users.type = ? " +
+		"GROUP BY users.id "
+
+	if err := DB.Select(&weightedScores, query2, courseID, Student); err != nil {
+		return err
+	}
+
+	// Update userCreditsCache
+	if existing, found := userCreditsCache.Load(courseID); found {
+		merged := append(existing.([]struct {
+			UserID  string `db:"user_id"`
+			Credits int    `db:"credits"`
+		}), userCredits...)
+		userCreditsCache.Store(courseID, merged)
+	} else {
+		userCreditsCache.Store(courseID, userCredits)
+	}
+
+	// Update weightedScoresCache
+	if existing, found := weightedScoresCache.Load(courseID); found {
+		merged := append(existing.([]float64), weightedScores...)
+		weightedScoresCache.Store(courseID, merged)
+	} else {
+		weightedScoresCache.Store(courseID, weightedScores)
+	}
+
+	return nil
 }
 
 type ClassWithSubmitted struct {
