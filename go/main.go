@@ -804,7 +804,7 @@ func (h *handlers) FetchGPAs(c echo.Context) ([]float64, error) {
 
 	if len(userCredits) == 0 || len(weightedScores) == 0 {
 		c.Logger().Error("Cache is empty, something went wrong")
-		return nil, c.NoContent(http.StatusInternalServerError)
+		return gpas, nil
 	}
 
 	for i, uc := range userCredits {
