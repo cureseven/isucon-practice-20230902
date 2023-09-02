@@ -747,34 +747,58 @@ func (h *handlers) FetchGPAs(c echo.Context) ([]float64, error) {
 	// キャッシュからデータを取得
 	if cachedGpas, found := cache.Load(cacheKey); found {
 		if time.Now().Before(cachedGpas.(*CacheGPA).Expiration) {
-			gpas = cachedGpas.(*CacheGPA).gpas
+			return cachedGpas.(*CacheGPA).gpas, nil
 		}
 	}
-	if len(gpas) == 0 {
-		query := "SELECT IFNULL(SUM(`submissions`.`score` * `courses`.`credit`), 0) / 100 / `credits`.`credits` AS `gpa`" +
-			" FROM `users`" +
-			" JOIN (" +
-			"     SELECT `users`.`id` AS `user_id`, SUM(`courses`.`credit`) AS `credits`" +
-			"     FROM `users`" +
-			"     JOIN `registrations` ON `users`.`id` = `registrations`.`user_id`" +
-			"     JOIN `courses` ON `registrations`.`course_id` = `courses`.`id` AND `courses`.`status` = ?" +
-			"     GROUP BY `users`.`id`" +
-			" ) AS `credits` ON `credits`.`user_id` = `users`.`id`" +
-			" JOIN `registrations` ON `users`.`id` = `registrations`.`user_id`" +
-			" JOIN `courses` ON `registrations`.`course_id` = `courses`.`id` AND `courses`.`status` = ?" +
-			" LEFT JOIN `classes` ON `courses`.`id` = `classes`.`course_id`" +
-			" LEFT JOIN `submissions` ON `users`.`id` = `submissions`.`user_id` AND `submissions`.`class_id` = `classes`.`id`" +
-			" WHERE `users`.`type` = ?" +
-			" GROUP BY `users`.`id`"
-		if err := h.DB.Select(&gpas, query, StatusClosed, StatusClosed, Student); err != nil {
-			c.Logger().Error(err)
-			return nil, c.NoContent(http.StatusInternalServerError)
-		}
-		cache.Store(cacheKey, &CacheGPA{
-			gpas:       gpas,
-			Expiration: time.Now().Add(900 * time.Millisecond),
-		})
+
+	// 各生徒の取得単位数を取得するSQL
+	creditsQuery := "SELECT `users`.`id` AS `user_id`, SUM(`courses`.`credit`) AS `credits`" +
+		" FROM `users`" +
+		" JOIN `registrations` ON `users`.`id` = `registrations`.`user_id`" +
+		" JOIN `courses` ON `registrations`.`course_id` = `courses`.`id` AND `courses`.`status` = ?" +
+		" GROUP BY `users`.`id`"
+	var creditsData []struct {
+		UserID  int
+		Credits float64
 	}
+	if err := h.DB.Select(&creditsData, creditsQuery, StatusClosed); err != nil {
+		c.Logger().Error(err)
+		return nil, c.NoContent(http.StatusInternalServerError)
+	}
+
+	// 各生徒について、履修済み科目の総合点数にその科目の単位数を掛けたものを合計するSQL
+	scoreQuery := "SELECT `submissions`.`user_id` AS `user_id`, IFNULL(SUM(`submissions`.`score` * `courses`.`credit`), 0) AS `weighted_score`" +
+		" FROM `submissions`" +
+		" JOIN `classes` ON `classes`.`id` = `submissions`.`class_id`" +
+		" JOIN `courses` ON `classes`.`course_id` = `courses`.`id` AND `courses`.`status` = ?" +
+		" GROUP BY `submissions`.`user_id`"
+	var scoreData []struct {
+		UserID        int
+		WeightedScore float64
+	}
+	if err := h.DB.Select(&scoreData, scoreQuery, StatusClosed); err != nil {
+		c.Logger().Error(err)
+		return nil, c.NoContent(http.StatusInternalServerError)
+	}
+
+	// 各生徒についてGPAを計算
+	userCreditsMap := make(map[int]float64)
+	for _, data := range creditsData {
+		userCreditsMap[data.UserID] = data.Credits
+	}
+	for _, data := range scoreData {
+		if credits, ok := userCreditsMap[data.UserID]; ok && credits != 0 {
+			gpa := data.WeightedScore / 100 / credits
+			gpas = append(gpas, gpa)
+		}
+	}
+
+	// キャッシュに格納
+	cache.Store(cacheKey, &CacheGPA{
+		gpas:       gpas,
+		Expiration: time.Now().Add(900 * time.Millisecond),
+	})
+
 	return gpas, nil
 }
 
