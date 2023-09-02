@@ -550,13 +550,13 @@ type CacheGPA struct {
 
 var cache sync.Map
 
-// GetGrades GET /api/users/me/grades 成績取得
 func (h *handlers) GetGrades(c echo.Context) error {
 	userID, _, _, err := getUserInfo(c)
 	if err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
+
 	// 履修している科目一覧取得
 	var registeredCourses []Course
 	query := "SELECT `courses`.*" +
@@ -568,6 +568,75 @@ func (h *handlers) GetGrades(c echo.Context) error {
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
+	// Create channels to receive results
+	courseResultsCh := make(chan []CourseResult, 1)
+	gpasCh := make(chan []float64, 1)
+	myGPACh := make(chan float64, 1)
+	myCreditsCh := make(chan int, 1)
+	errCh := make(chan error, 2) // 2 goroutines may produce an error
+
+	// Run getCourseResults in a goroutine
+	go func() {
+		courseResults, myGPA, myCredits, err := h.getCourseResults(c, registeredCourses, query, userID)
+		if err != nil {
+			errCh <- err
+			return
+		}
+		if myCredits > 0 {
+			myGPA = myGPA / 100 / float64(myCredits)
+		}
+		courseResultsCh <- courseResults
+		myGPACh <- myGPA
+		myCreditsCh <- myCredits
+	}()
+
+	// Run FetchGPAs in a goroutine
+	go func() {
+		gpas, err := h.FetchGPAs(c)
+		if err != nil {
+			errCh <- err
+			return
+		}
+		gpasCh <- gpas
+	}()
+
+	var courseResults []CourseResult
+	var gpas []float64
+	var myGPA float64
+	var myCredits int
+
+	// Wait for both goroutines to complete
+	for i := 0; i < 4; i++ { // now we're waiting for 4 results
+		select {
+		case res := <-courseResultsCh:
+			courseResults = res
+		case res := <-gpasCh:
+			gpas = res
+		case res := <-myGPACh:
+			myGPA = res
+		case res := <-myCreditsCh:
+			myCredits = res
+		case err := <-errCh:
+			return err
+		}
+	}
+
+	res := GetGradeResponse{
+		Summary: Summary{
+			Credits:   myCredits,
+			GPA:       myGPA,
+			GpaTScore: tScoreFloat64(myGPA, gpas),
+			GpaAvg:    averageFloat64(gpas, 0),
+			GpaMax:    maxFloat64(gpas, 0),
+			GpaMin:    minFloat64(gpas, 0),
+		},
+		CourseResults: courseResults,
+	}
+
+	return c.JSON(http.StatusOK, res)
+}
+
+func (h *handlers) getCourseResults(c echo.Context, registeredCourses []Course, query string, userID string) ([]CourseResult, float64, int, error) {
 	// 科目毎の成績計算処理
 	courseResults := make([]CourseResult, 0, len(registeredCourses))
 	myGPA := 0.0
@@ -581,7 +650,7 @@ func (h *handlers) GetGrades(c echo.Context) error {
 			" ORDER BY `part` DESC"
 		if err := h.DB.Select(&classes, query, course.ID); err != nil {
 			c.Logger().Error(err)
-			return c.NoContent(http.StatusInternalServerError)
+			return nil, 0, 0, c.NoContent(http.StatusInternalServerError)
 		}
 
 		// 先にclassIDの配列を作成
@@ -598,12 +667,12 @@ func (h *handlers) GetGrades(c echo.Context) error {
 			q, args, err := sqlx.In("SELECT class_id, COUNT(*) FROM `submissions` WHERE `class_id` IN (?) GROUP BY `class_id`", classIDs)
 			if err != nil {
 				c.Logger().Error(err) // oops
-				return c.NoContent(http.StatusInternalServerError)
+				return nil, 0, 0, c.NoContent(http.StatusInternalServerError)
 			}
 			rows, err := h.DB.Query(q, args...)
 			if err != nil {
 				c.Logger().Error(err)
-				return c.NoContent(http.StatusInternalServerError)
+				return nil, 0, 0, c.NoContent(http.StatusInternalServerError)
 			}
 
 			for rows.Next() {
@@ -620,12 +689,12 @@ func (h *handlers) GetGrades(c echo.Context) error {
 			q, args, err = sqlx.In("SELECT `class_id`, `submissions`.`score` FROM `submissions` WHERE `user_id` = ? AND `class_id` IN (?)", userID, classIDs)
 			if err != nil {
 				c.Logger().Error(err) // oops
-				return c.NoContent(http.StatusInternalServerError)
+				return nil, 0, 0, c.NoContent(http.StatusInternalServerError)
 			}
 			rows, err = h.DB.Query(q, args...)
 			if err != nil {
 				c.Logger().Error(err)
-				return c.NoContent(http.StatusInternalServerError)
+				return nil, 0, 0, c.NoContent(http.StatusInternalServerError)
 			}
 
 			for rows.Next() {
@@ -676,7 +745,7 @@ func (h *handlers) GetGrades(c echo.Context) error {
 			" GROUP BY `users`.`id`"
 		if err := h.DB.Select(&totals, query, course.ID); err != nil {
 			c.Logger().Error(err)
-			return c.NoContent(http.StatusInternalServerError)
+			return nil, 0, 0, c.NoContent(http.StatusInternalServerError)
 		}
 
 		courseResults = append(courseResults, CourseResult{
@@ -696,29 +765,7 @@ func (h *handlers) GetGrades(c echo.Context) error {
 			myCredits += int(course.Credit)
 		}
 	}
-	if myCredits > 0 {
-		myGPA = myGPA / 100 / float64(myCredits)
-	}
-
-	// GPAの統計値
-	// 一つでも修了した科目がある学生のGPA一覧
-	gpas, err := h.FetchGPAs(c)
-	if err != nil {
-		return err
-	}
-	res := GetGradeResponse{
-		Summary: Summary{
-			Credits:   myCredits,
-			GPA:       myGPA,
-			GpaTScore: tScoreFloat64(myGPA, gpas),
-			GpaAvg:    averageFloat64(gpas, 0),
-			GpaMax:    maxFloat64(gpas, 0),
-			GpaMin:    minFloat64(gpas, 0),
-		},
-		CourseResults: courseResults,
-	}
-
-	return c.JSON(http.StatusOK, res)
+	return courseResults, myGPA, myCredits, nil
 }
 
 func (h *handlers) FetchGPAs(c echo.Context) ([]float64, error) {
