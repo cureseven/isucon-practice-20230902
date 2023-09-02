@@ -790,11 +790,11 @@ func (h *handlers) FetchGPAs(c echo.Context) ([]float64, error) {
 
 	// First Query: Calculate sum of credits for each user
 	var userCredits []struct {
-		UserID  int
-		Credits int
+		UserID  int `db:"user_id"`
+		Credits int `db:"credits"`
 	}
 
-	query1 := "SELECT users.id AS user_id, SUM(courses.credit) AS creditsFROM users " +
+	query1 := "SELECT users.id AS user_id, SUM(courses.credit) AS credits FROM users " +
 		"JOIN registrations ON users.id = registrations.user_id " +
 		"JOIN courses ON registrations.course_id = courses.id AND courses.status = ? " +
 		"GROUP BY users.id "
