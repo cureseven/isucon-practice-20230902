@@ -714,7 +714,7 @@ func (h *handlers) GetGrades(c echo.Context) error {
 	// GPAの統計値
 	// 一つでも修了した科目がある学生のGPA一覧
 	var gpas []float64
-	if err := h.DB.Select(&gpas, "SELECT gpa from user_gpas"); err != nil {
+	if err := h.DB.Select(&gpas, "SELECT gpa FROM user_gpas WHERE gpa IS NOT NULL"); err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
