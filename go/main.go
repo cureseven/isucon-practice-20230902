@@ -778,6 +778,8 @@ func (h *handlers) getCourseResults(c echo.Context, registeredCourses []Course, 
 }
 
 func (h *handlers) FetchGPAs(c echo.Context) ([]float64, error) {
+	updateMutex.Lock()
+	defer updateMutex.Unlock()
 	var gpas []float64
 	var userCredits []struct {
 		UserID  string `db:"user_id"`
