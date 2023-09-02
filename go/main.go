@@ -781,26 +781,20 @@ func (h *handlers) FetchGPAs(c echo.Context) ([]float64, error) {
 	updateMutex.Lock()
 	defer updateMutex.Unlock()
 	var gpas []float64
-	var userCredits []struct {
-		UserID  string `db:"user_id"`
-		Credits int    `db:"credits"`
-	}
-	var weightedScores []float64
+	userCredits := make(map[string]int)
+	weightedScores := make(map[string]float64)
 
-	// Gather cached userCredits
 	userCreditsCache.Range(func(key, value interface{}) bool {
-		for _, uc := range value.([]struct {
-			UserID  string `db:"user_id"`
-			Credits int    `db:"credits"`
-		}) {
-			userCredits = append(userCredits, uc)
-		}
+		userID := key.(string)
+		credits := value.(int)
+		userCredits[userID] = credits
 		return true
 	})
 
-	// Gather cached weightedScores
 	weightedScoresCache.Range(func(key, value interface{}) bool {
-		weightedScores = append(weightedScores, value.([]float64)...)
+		userID := key.(string)
+		score := value.(float64)
+		weightedScores[userID] = score
 		return true
 	})
 
@@ -812,15 +806,10 @@ func (h *handlers) FetchGPAs(c echo.Context) ([]float64, error) {
 	c.Logger().Error(len(userCredits))
 
 	for i, uc := range userCredits {
-		if i >= len(weightedScores) {
-			c.Logger().Errorf("userCredits and weightedScores do not match in length. Index: %d, UserID: %s", i, uc.UserID)
-			continue
-		}
-
-		if uc.Credits == 0 {
+		if uc == 0 {
 			gpas = append(gpas, 0)
 		} else {
-			gpa := weightedScores[i] / float64(uc.Credits)
+			gpa := weightedScores[i] / float64(uc)
 			gpas = append(gpas, gpa)
 		}
 	}
@@ -1090,6 +1079,7 @@ func UpdateCacheForCourse(DB *sqlx.DB, courseID string) error {
 		Credits int    `db:"credits"`
 	}
 
+
 	// Query for userCredits
 	query1 := "SELECT users.id AS user_id, SUM(courses.credit) AS credits FROM users " +
 		"JOIN registrations ON users.id = registrations.user_id " +
@@ -1102,8 +1092,11 @@ func UpdateCacheForCourse(DB *sqlx.DB, courseID string) error {
 	}
 
 	// Query for weightedScores
-	var weightedScores []float64
-	query2 := "SELECT IFNULL(SUM(submissions.score * courses.credit), 0) / 100 AS weighted_score " +
+	var weightedScores []struct {
+		UserID         string  `db:"user_id"`
+		WeightedScore  float64 `db:"weighted_score"`
+	}
+	query2 := "SELECT users.id as user_id, IFNULL(SUM(submissions.score * courses.credit), 0) AS weighted_score " +
 		"FROM users " +
 		"JOIN registrations ON users.id = registrations.user_id " +
 		"JOIN courses ON registrations.course_id = courses.id AND courses.id = ? AND courses.status = ? " +
@@ -1116,24 +1109,22 @@ func UpdateCacheForCourse(DB *sqlx.DB, courseID string) error {
 		return err
 	}
 
-	// Update userCreditsCache
-	if existing, found := userCreditsCache.Load(courseID); found {
-		merged := append(existing.([]struct {
-			UserID  string `db:"user_id"`
-			Credits int    `db:"credits"`
-		}), userCredits...)
-		userCreditsCache.Store(courseID, merged)
-	} else {
-		userCreditsCache.Store(courseID, userCredits)
+	for _, uc := range userCredits {
+		if existingCredits, ok := userCreditsCache.Load(uc.UserID); ok {
+			newCredits := existingCredits.(int) + uc.Credits
+			userCreditsCache.Store(uc.UserID, newCredits)
+		} else {
+			userCreditsCache.Store(uc.UserID, uc.Credits)
+		}
 	}
 
-	userCreditsCache.Store(courseID, userCredits)
-	// Update weightedScoresCache
-	if existing, found := weightedScoresCache.Load(courseID); found {
-		merged := append(existing.([]float64), weightedScores...)
-		weightedScoresCache.Store(courseID, merged)
-	} else {
-		weightedScoresCache.Store(courseID, weightedScores)
+	for _, ws := range weightedScores {
+		if existingScore, ok := weightedScoresCache.Load(ws.UserID); ok {
+			newScore := existingScore.(float64) + ws.WeightedScore
+			weightedScoresCache.Store(ws.UserID, newScore)
+		} else {
+			weightedScoresCache.Store(ws.UserID, ws.WeightedScore)
+		}
 	}
 
 	return nil
