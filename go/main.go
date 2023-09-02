@@ -1380,8 +1380,28 @@ func (h *handlers) RegisterScores(c echo.Context) error {
 		return c.String(http.StatusBadRequest, "Invalid format.")
 	}
 
+	userIds := make([]int, 0, len(req))
+
+	// UserCodeからuserIdを取得
 	for _, score := range req {
-		if _, err := tx.Exec("UPDATE `submissions` JOIN `users` ON `users`.`id` = `submissions`.`user_id` SET `score` = ? WHERE `users`.`code` = ? AND `class_id` = ?", score.Score, score.UserCode, classID); err != nil {
+		var userId int
+		if err := tx.QueryRow("SELECT `id` FROM `users` WHERE `code` = ?", score.UserCode).Scan(&userId); err != nil {
+			c.Logger().Error(err)
+			return c.NoContent(http.StatusInternalServerError)
+		}
+		userIds = append(userIds, userId)
+	}
+
+	// userIdsを文字列のスライスに変換
+	userIdStrings := make([]string, len(userIds))
+	for i, id := range userIds {
+		userIdStrings[i] = strconv.Itoa(id)
+	}
+
+	// WHERE INクエリを使って更新
+	for _, score := range req {
+		query := fmt.Sprintf("UPDATE `submissions` SET `score` = ? WHERE `user_id` IN (%s) AND `class_id` = ?", strings.Join(userIdStrings, ","))
+		if _, err := tx.Exec(query, score.Score, classID); err != nil {
 			c.Logger().Error(err)
 			return c.NoContent(http.StatusInternalServerError)
 		}
