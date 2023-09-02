@@ -740,6 +740,16 @@ func (h *handlers) GetGrades(c echo.Context) error {
 	return c.JSON(http.StatusOK, res)
 }
 
+type CreditData struct {
+	UserID  int     `db:"user_id"`
+	Credits float64 `db:"credits"`
+}
+
+type ScoreData struct {
+	UserID        int     `db:"user_id"`
+	WeightedScore float64 `db:"weighted_score"`
+}
+
 func (h *handlers) FetchGPAs(c echo.Context) ([]float64, error) {
 	var gpas []float64
 	cacheKey := "gpas"
@@ -757,10 +767,7 @@ func (h *handlers) FetchGPAs(c echo.Context) ([]float64, error) {
 		" JOIN `registrations` ON `users`.`id` = `registrations`.`user_id`" +
 		" JOIN `courses` ON `registrations`.`course_id` = `courses`.`id` AND `courses`.`status` = ?" +
 		" GROUP BY `users`.`id`"
-	var creditsData []struct {
-		UserID  int
-		Credits float64
-	}
+	var creditsData []CreditData
 	if err := h.DB.Select(&creditsData, creditsQuery, StatusClosed); err != nil {
 		c.Logger().Error(err)
 		return nil, c.NoContent(http.StatusInternalServerError)
@@ -772,10 +779,7 @@ func (h *handlers) FetchGPAs(c echo.Context) ([]float64, error) {
 		" JOIN `classes` ON `classes`.`id` = `submissions`.`class_id`" +
 		" JOIN `courses` ON `classes`.`course_id` = `courses`.`id` AND `courses`.`status` = ?" +
 		" GROUP BY `submissions`.`user_id`"
-	var scoreData []struct {
-		UserID        int
-		WeightedScore float64
-	}
+	var scoreData []ScoreData
 	if err := h.DB.Select(&scoreData, scoreQuery, StatusClosed); err != nil {
 		c.Logger().Error(err)
 		return nil, c.NoContent(http.StatusInternalServerError)
