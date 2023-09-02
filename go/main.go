@@ -954,11 +954,11 @@ ORDER BY users.id
 ON DUPLICATE KEY UPDATE gpa = VALUES(gpa);`
 	var gpaDatas []GPAData
 	rows, err := db.Queryx(q)
-	defer rows.Close()
 	if err != nil {
 		log.Println("Failed to fetch GPA data:", err)
 		return
 	}
+	defer rows.Close()
 	if err := rows.Scan(&gpaDatas); err != nil {
 		log.Println("Failed to scan GPA data:", err)
 		return
