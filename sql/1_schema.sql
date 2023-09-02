@@ -86,7 +86,7 @@ CREATE TABLE `unread_announcements`
 );
 
 CREATE TABLE user_gpas (
-    user_id INT PRIMARY KEY,
+    user_id char(26) PRIMARY KEY,
     gpa DECIMAL(5, 2)
 );
 CREATE TRIGGER after_submission_update
