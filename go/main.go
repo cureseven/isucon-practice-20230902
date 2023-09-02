@@ -837,10 +837,10 @@ func (h *handlers) FetchGPAs(c echo.Context) ([]float64, error) {
 	}
 
 	// Update the cache
-	cache.Store(cacheKey, &CacheGPA{
-		gpas:       gpas,
-		Expiration: time.Now().Add(900 * time.Millisecond),
-	})
+	//cache.Store(cacheKey, &CacheGPA{
+	//	gpas:       gpas,
+	//	Expiration: time.Now().Add(900 * time.Millisecond),
+	//})
 
 	return gpas, nil
 }
