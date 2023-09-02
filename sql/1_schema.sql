@@ -89,31 +89,29 @@ CREATE TABLE user_gpas (
     user_id char(26) PRIMARY KEY,
     gpa DECIMAL(10, 8)
 );
-CREATE TRIGGER after_submission_update
-    AFTER UPDATE ON submissions
+CREATE TRIGGER after_course_update
+    AFTER UPDATE ON courses
     FOR EACH ROW
 BEGIN
-    DECLARE total_credits DECIMAL(10, 8);
-    DECLARE total_score DECIMAL(10, 8);
+    -- statusがclosedに変更された場合のみ処理を実行
+    IF OLD.status <> 'closed' AND NEW.status = 'closed' THEN
 
-    -- 合計クレジットを計算
-    SELECT SUM(courses.credit) INTO total_credits
-    FROM registrations
-             JOIN courses ON registrations.course_id = courses.id AND courses.status = 'closed'
-    WHERE registrations.user_id = NEW.user_id;
-
-    -- 合計スコアを計算
-    SELECT IFNULL(SUM(submissions.score * courses.credit), 0) INTO total_score
-    FROM registrations
-             JOIN courses ON registrations.course_id = courses.id AND courses.status = 'closed'
-             LEFT JOIN classes ON courses.id = classes.course_id
-             LEFT JOIN submissions ON NEW.user_id = submissions.user_id AND submissions.class_id = classes.id
-    WHERE registrations.user_id = NEW.user_id;
-
-    -- GPAを計算
-    SET @new_gpa = total_score / 100 / total_credits;
-
-    -- GPAをuser_gpasテーブルにupsert
-    INSERT INTO user_gpas (user_id, gpa) VALUES (NEW.user_id, @new_gpa)
+        -- 今回更新されたコースを受講しているユーザについて、全てのclosedコースを考慮してGPAを再計算し、user_gpasテーブルにupsert
+        INSERT INTO user_gpas (user_id, gpa)
+        SELECT
+            regs.user_id,
+            IFNULL(SUM(subs.score * co.credit) / 100 / SUM(co.credit), 0) AS new_gpa
+        FROM
+            -- 更新されたコースに関連するユーザのリストを取得
+            (SELECT DISTINCT user_id FROM registrations WHERE course_id = NEW.id) AS regs
+        -- 上記のユーザが受講している全てのclosedステータスのコースをJOIN
+        JOIN registrations ON regs.user_id = registrations.user_id
+        JOIN courses co ON registrations.course_id = co.id AND co.status = 'closed'
+        LEFT JOIN classes cl ON co.id = cl.course_id
+        LEFT JOIN submissions subs ON regs.user_id = subs.user_id AND subs.class_id = cl.id
+        GROUP BY
+            regs.user_id
         ON DUPLICATE KEY UPDATE gpa = VALUES(gpa);
+
+    END IF;
 END;
