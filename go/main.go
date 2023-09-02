@@ -1,20 +1,20 @@
 package main
 
 import (
+	"archive/zip"
 	"database/sql"
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 
-	"github.com/felixge/fgprof"
 	"github.com/go-sql-driver/mysql"
 	"github.com/gorilla/sessions"
 	"github.com/jmoiron/sqlx"
@@ -22,7 +22,6 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"golang.org/x/crypto/bcrypt"
-	_ "net/http/pprof"
 )
 
 const (
@@ -38,12 +37,8 @@ type handlers struct {
 }
 
 func main() {
-	http.DefaultServeMux.Handle("/debug/fgprof", fgprof.Handler())
-	go func() {
-		log.Println(http.ListenAndServe(":6060", nil))
-	}()
 	e := echo.New()
-	//e.Debug = GetEnv("DEBUG", "") == "true"
+	e.Debug = GetEnv("DEBUG", "") == "true"
 	e.Server.Addr = fmt.Sprintf(":%v", GetEnv("PORT", "7000"))
 	e.HideBanner = true
 
@@ -593,37 +588,82 @@ func (h *handlers) GetGrades(c echo.Context) error {
 			return c.NoContent(http.StatusInternalServerError)
 		}
 
-		// 講義毎の成績計算処理
+		// 先にclassIDの配列を作成
 		classScores := make([]ClassScore, 0, len(classes))
 		var myTotalScore int
+		var classIDs []string
 		for _, class := range classes {
-			var submissionsCount int
-			if err := h.DB.Get(&submissionsCount, "SELECT COUNT(*) FROM `submissions` WHERE `class_id` = ?", class.ID); err != nil {
+			classIDs = append(classIDs, class.ID)
+		}
+		submissionsCounts := map[string]int64{}
+		myScores := map[string]sql.NullInt64{}
+		if len(classIDs) > 0 {
+			// submissionsCountを一度のクエリで取得
+			q, args, err := sqlx.In("SELECT class_id, COUNT(*) FROM `submissions` WHERE `class_id` IN (?) GROUP BY `class_id`", classIDs)
+			if err != nil {
+				c.Logger().Error(err) // oops
+				return c.NoContent(http.StatusInternalServerError)
+			}
+			rows, err := h.DB.Query(q, args...)
+			if err != nil {
 				c.Logger().Error(err)
 				return c.NoContent(http.StatusInternalServerError)
 			}
 
-			var myScore sql.NullInt64
-			if err := h.DB.Get(&myScore, "SELECT `submissions`.`score` FROM `submissions` WHERE `user_id` = ? AND `class_id` = ?", userID, class.ID); err != nil && err != sql.ErrNoRows {
+			for rows.Next() {
+				var classID string
+				var count int64
+				err := rows.Scan(&classID, &count)
+				if err != nil {
+					c.Logger().Error(err)
+				}
+				submissionsCounts[classID] = count
+			}
+			rows.Close()
+
+			q, args, err = sqlx.In("SELECT `class_id`, `submissions`.`score` FROM `submissions` WHERE `user_id` = ? AND `class_id` IN (?)", userID, classIDs)
+			if err != nil {
+				c.Logger().Error(err) // oops
+				return c.NoContent(http.StatusInternalServerError)
+			}
+			rows, err = h.DB.Query(q, args...)
+			if err != nil {
 				c.Logger().Error(err)
 				return c.NoContent(http.StatusInternalServerError)
-			} else if err == sql.ErrNoRows || !myScore.Valid {
+			}
+
+			for rows.Next() {
+				var classID string
+				var score sql.NullInt64
+				err := rows.Scan(&classID, &score)
+				if err != nil {
+					c.Logger().Error(err)
+				}
+				myScores[classID] = score
+			}
+			rows.Close()
+		}
+		for _, class := range classes {
+			classID := class.ID
+			subCount := int(submissionsCounts[classID])
+			nullScore := myScores[classID]
+			if !nullScore.Valid {
 				classScores = append(classScores, ClassScore{
-					ClassID:    class.ID,
+					ClassID:    classID,
 					Part:       class.Part,
 					Title:      class.Title,
 					Score:      nil,
-					Submitters: submissionsCount,
+					Submitters: subCount,
 				})
 			} else {
-				score := int(myScore.Int64)
+				score := int(nullScore.Int64)
 				myTotalScore += score
 				classScores = append(classScores, ClassScore{
-					ClassID:    class.ID,
+					ClassID:    classID,
 					Part:       class.Part,
 					Title:      class.Title,
 					Score:      &score,
-					Submitters: submissionsCount,
+					Submitters: subCount,
 				})
 			}
 		}
@@ -1271,27 +1311,42 @@ func (h *handlers) DownloadSubmittedAssignments(c echo.Context) error {
 }
 
 func createSubmissionsZip(zipFilePath string, classID string, submissions []Submission) error {
-	tmpDir := AssignmentsDirectory + classID + "/"
-	if err := exec.Command("rm", "-rf", tmpDir).Run(); err != nil {
+	zipFile, err := os.Create(zipFilePath)
+	if err != nil {
 		return err
 	}
-	if err := exec.Command("mkdir", tmpDir).Run(); err != nil {
-		return err
-	}
+	defer zipFile.Close()
 
-	// ファイル名を指定の形式に変更
+	zipWriter := zip.NewWriter(zipFile)
+	defer zipWriter.Close()
+
 	for _, submission := range submissions {
-		if err := exec.Command(
-			"cp",
-			AssignmentsDirectory+classID+"-"+submission.UserID+".pdf",
-			tmpDir+submission.UserCode+"-"+submission.FileName,
-		).Run(); err != nil {
+		srcPath := filepath.Join(AssignmentsDirectory, fmt.Sprintf("%s-%s.pdf", classID, submission.UserID))
+		destFileName := fmt.Sprintf("%s-%s", submission.UserCode, submission.FileName)
+
+		err := addFileToZip(zipWriter, srcPath, destFileName)
+		if err != nil {
 			return err
 		}
 	}
 
-	// -i 'tmpDir/*': 空zipを許す
-	return exec.Command("zip", "-j", "-r", zipFilePath, tmpDir, "-i", tmpDir+"*").Run()
+	return nil
+}
+
+func addFileToZip(zipWriter *zip.Writer, filePath string, zipFileName string) error {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	f, err := zipWriter.Create(zipFileName)
+	if err != nil {
+		return err
+	}
+
+	_, err = io.Copy(f, file)
+	return err
 }
 
 // ---------- Announcement API ----------
