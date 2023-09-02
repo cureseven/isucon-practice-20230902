@@ -923,34 +923,29 @@ func updateGpa(db sqlx.Execer) {
 INSERT INTO user_gpas (user_id, gpa)
 SELECT
     users.id as user_id,
-    IFNULL(
-            SUM(submissions.score * courses.credit),
-            0
-        ) / 100 / credits.credits AS gpa
+    IFNULL(SUM(submissions.score * courses.credit), 0) / 100 / credits.credits AS gpa
 FROM
     users
-        JOIN (
-        SELECT
-            users.id AS user_id,
-            SUM(courses.credit) AS credits
-        FROM
-            users
-                JOIN registrations ON users.id = registrations.user_id
-                JOIN courses ON registrations.course_id = courses.id
-                AND courses.status = 'closed'
-        GROUP BY
-            users.id
-    ) AS credits ON credits.user_id = users.id
-        JOIN registrations ON users.id = registrations.user_id
-        JOIN courses ON registrations.course_id = courses.id
-        AND courses.status = 'closed'
-        LEFT JOIN classes ON courses.id = classes.course_id
-        LEFT JOIN submissions ON users.id = submissions.user_id
-        AND submissions.class_id = classes.id
+	JOIN (
+		 SELECT
+			 users.id AS user_id,
+			 SUM(courses.credit) AS credits
+		 FROM
+			 users
+				 JOIN registrations ON users.id = registrations.user_id
+				 JOIN courses ON registrations.course_id = courses.id
+				 AND courses.status = 'closed'
+		 GROUP BY
+			 users.id
+	) AS credits ON credits.user_id = users.id
+	JOIN registrations ON users.id = registrations.user_id
+	JOIN courses ON registrations.course_id = courses.id AND courses.status = 'closed'
+	LEFT JOIN classes ON courses.id = classes.course_id
+	LEFT JOIN submissions ON users.id = submissions.user_id AND submissions.class_id = classes.id
 WHERE
-        users.type = 'student'
-GROUP BY
-    users.id
+    users.type = 'student'
+GROUP BY users.id
+ORDER BY users.id
 ON DUPLICATE KEY UPDATE gpa = VALUES(gpa);`
 
 	_, err := db.Exec(q)
