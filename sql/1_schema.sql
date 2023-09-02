@@ -89,9 +89,6 @@ CREATE TABLE user_gpas (
     user_id INT PRIMARY KEY,
     gpa DECIMAL(5, 2)
 );
-
-DELIMITER //
-
 CREATE TRIGGER after_submission_update
     AFTER UPDATE ON submissions
     FOR EACH ROW
@@ -116,11 +113,7 @@ BEGIN
     -- GPAを計算
     SET @new_gpa = total_score / 100 / total_credits;
 
-    -- GPAをuser_gpaテーブルにupsert
-    INSERT INTO user_gpa (user_id, gpa) VALUES (NEW.user_id, @new_gpa)
+    -- GPAをuser_gpasテーブルにupsert
+    INSERT INTO user_gpas (user_id, gpa) VALUES (NEW.user_id, @new_gpa)
         ON DUPLICATE KEY UPDATE gpa = VALUES(gpa);
 END;
-
-//
-
-DELIMITER ;
