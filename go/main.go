@@ -952,14 +952,8 @@ WHERE
 GROUP BY users.id
 ORDER BY users.id`
 	var gpaDatas []GPAData
-	rows, err := db.Queryx(q)
-	if err != nil {
+	if err := db.Select(&gpaDatas, q); err != nil {
 		log.Println("Failed to fetch GPA data:", err)
-		return
-	}
-	defer rows.Close()
-	if err := rows.Scan(&gpaDatas); err != nil {
-		log.Println("Failed to scan GPA data:", err)
 		return
 	}
 
@@ -974,7 +968,7 @@ ORDER BY users.id`
 	insertQuery := `
 INSERT INTO user_gpas (user_id, gpa) VALUES ` + strings.Join(valuesStrings, ",") + ` ON DUPLICATE KEY UPDATE gpa = VALUES(gpa)`
 
-	_, err = db.Exec(insertQuery, valuesArgs...)
+	_, err := db.Exec(insertQuery, valuesArgs...)
 	if err != nil {
 		log.Println("Failed to execute bulk upsert:", err)
 	}
