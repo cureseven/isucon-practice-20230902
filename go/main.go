@@ -809,7 +809,7 @@ func (h *handlers) FetchGPAs(c echo.Context) ([]float64, error) {
 		if uc == 0 {
 			gpas = append(gpas, 0)
 		} else {
-			gpa := weightedScores[i] / float64(uc)
+			gpa := (weightedScores[i]/100) / float64(uc)
 			gpas = append(gpas, gpa)
 		}
 	}
