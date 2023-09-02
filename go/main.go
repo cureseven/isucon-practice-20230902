@@ -741,12 +741,12 @@ func (h *handlers) GetGrades(c echo.Context) error {
 }
 
 type CreditData struct {
-	UserID  int     `db:"user_id"`
+	UserID  string  `db:"user_id"`
 	Credits float64 `db:"credits"`
 }
 
 type ScoreData struct {
-	UserID        int     `db:"user_id"`
+	UserID        string  `db:"user_id"`
 	WeightedScore float64 `db:"weighted_score"`
 }
 
