@@ -371,8 +371,6 @@ func (h *handlers) GetRegisteredCourses(c echo.Context) error {
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
-	defer h.DB.Rollback()
-
 	var courses []Course
 	query := "SELECT `courses`.*" +
 		" FROM `courses`" +
