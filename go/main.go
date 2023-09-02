@@ -795,9 +795,9 @@ func (h *handlers) FetchGPAs(c echo.Context) ([]float64, error) {
 	}
 
 	query1 := "SELECT users.id AS user_id, SUM(courses.credit) AS creditsFROM users " +
-		"JOIN registrations ON users.id = registrations.user_id" +
-		"JOIN courses ON registrations.course_id = courses.id AND courses.status = ?" +
-		"GROUP BY users.id"
+		"JOIN registrations ON users.id = registrations.user_id " +
+		"JOIN courses ON registrations.course_id = courses.id AND courses.status = ? " +
+		"GROUP BY users.id "
 
 	if err := h.DB.Select(&userCredits, query1, StatusClosed); err != nil {
 		c.Logger().Error(err)
@@ -805,14 +805,14 @@ func (h *handlers) FetchGPAs(c echo.Context) ([]float64, error) {
 	}
 
 	// Second Query: Calculate GPA based on the weighted scores for each user
-	query2 := "SELECT IFNULL(SUM(submissions.score * courses.credit), 0) / 100 AS weighted_score" +
-		"FROM users" +
-		"JOIN registrations ON users.id = registrations.user_id" +
-		"JOIN courses ON registrations.course_id = courses.id AND courses.status = ?" +
-		"LEFT JOIN classes ON courses.id = classes.course_id" +
-		"LEFT JOIN submissions ON users.id = submissions.user_id AND submissions.class_id = classes.id" +
-		"WHERE users.type = ?" +
-		"GROUP BY users.id"
+	query2 := "SELECT IFNULL(SUM(submissions.score * courses.credit), 0) / 100 AS weighted_score " +
+		"FROM users " +
+		"JOIN registrations ON users.id = registrations.user_id " +
+		"JOIN courses ON registrations.course_id = courses.id AND courses.status = ? " +
+		"LEFT JOIN classes ON courses.id = classes.course_id " +
+		"LEFT JOIN submissions ON users.id = submissions.user_id AND submissions.class_id = classes.id " +
+		"WHERE users.type = ? " +
+		"GROUP BY users.id "
 
 	var weightedScores []float64
 	if err := h.DB.Select(&weightedScores, query2, StatusClosed, Student); err != nil {
