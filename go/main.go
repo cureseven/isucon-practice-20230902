@@ -1380,11 +1380,11 @@ func (h *handlers) RegisterScores(c echo.Context) error {
 		return c.String(http.StatusBadRequest, "Invalid format.")
 	}
 
-	userIds := make([]int, 0, len(req))
+	userIds := make([]string, 0, len(req))
 
 	// UserCodeからuserIdを取得
 	for _, score := range req {
-		var userId int
+		var userId string
 		if err := tx.QueryRow("SELECT `id` FROM `users` WHERE `code` = ?", score.UserCode).Scan(&userId); err != nil {
 			c.Logger().Error(err)
 			return c.NoContent(http.StatusInternalServerError)
@@ -1395,7 +1395,7 @@ func (h *handlers) RegisterScores(c echo.Context) error {
 	// userIdsを文字列のスライスに変換
 	userIdStrings := make([]string, len(userIds))
 	for i, id := range userIds {
-		userIdStrings[i] = strconv.Itoa(id)
+		userIdStrings[i] = id
 	}
 
 	// WHERE INクエリを使って更新
