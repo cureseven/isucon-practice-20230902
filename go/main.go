@@ -1218,28 +1218,27 @@ func (h *handlers) RegisterScores(c echo.Context) error {
 	}
 
 	// UserCodeからuserIdを一度に取得
-	userCodeToIdMap := make(map[string]int)
 	var userCodes []string
 	for _, score := range req {
 		userCodes = append(userCodes, score.UserCode)
 	}
-	placeholders := strings.Repeat("?,", len(userCodes)-1) + "?"
-	query := fmt.Sprintf("SELECT `id`, `code` FROM `users` WHERE `code` IN (%s)", placeholders)
-	rows, err := tx.Query(query, userCodes)
+
+	var users []User
+	query, args, err := sqlx.In("SELECT `id`, `code` FROM `users` WHERE `code` IN (?)", userCodes)
 	if err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
-	defer rows.Close()
 
-	for rows.Next() {
-		var id int
-		var code string
-		if err := rows.Scan(&id, &code); err != nil {
-			c.Logger().Error(err)
-			return c.NoContent(http.StatusInternalServerError)
-		}
-		userCodeToIdMap[code] = id
+	query = tx.Rebind(query) 
+	if err := tx.Select(&users, query, args...); err != nil {
+		c.Logger().Error(err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
+
+	userCodeToIdMap := make(map[string]string)
+	for _, user := range users {
+		userCodeToIdMap[user.Code] = user.ID
 	}
 
 	// userIdを用いてsubmissionsテーブルを更新
@@ -1249,6 +1248,7 @@ func (h *handlers) RegisterScores(c echo.Context) error {
 			c.Logger().Error(fmt.Errorf("No userId found for userCode: %s", score.UserCode))
 			continue
 		}
+
 		if _, err := tx.Exec("UPDATE `submissions` SET `score` = ? WHERE `user_id` = ? AND `class_id` = ?", score.Score, userId, classID); err != nil {
 			c.Logger().Error(err)
 			return c.NoContent(http.StatusInternalServerError)
