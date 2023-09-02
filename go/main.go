@@ -1222,23 +1222,24 @@ func (h *handlers) RegisterScores(c echo.Context) error {
 	for _, score := range req {
 		userCodes = append(userCodes, score.UserCode)
 	}
-
-	var users []User
-	query, args, err := sqlx.In("SELECT `id`, `code` FROM `users` WHERE `code` IN (?)", userCodes)
-	if err != nil {
-		c.Logger().Error(err)
-		return c.NoContent(http.StatusInternalServerError)
-	}
-
-	query = tx.Rebind(query) 
-	if err := tx.Select(&users, query, args...); err != nil {
-		c.Logger().Error(err)
-		return c.NoContent(http.StatusInternalServerError)
-	}
-
 	userCodeToIdMap := make(map[string]string)
-	for _, user := range users {
-		userCodeToIdMap[user.Code] = user.ID
+	if len(userCodes) > 0 {
+		var users []User
+		query, args, err := sqlx.In("SELECT `id`, `code` FROM `users` WHERE `code` IN (?)", userCodes)
+		if err != nil {
+			c.Logger().Error(err)
+			return c.NoContent(http.StatusInternalServerError)
+		}
+
+		query = tx.Rebind(query) // sqlx.Inの後に必要な場合
+		if err := tx.Select(&users, query, args...); err != nil {
+			c.Logger().Error(err)
+			return c.NoContent(http.StatusInternalServerError)
+		}
+
+		for _, user := range users {
+			userCodeToIdMap[user.Code] = user.ID
+		}
 	}
 
 	// userIdを用いてsubmissionsテーブルを更新
