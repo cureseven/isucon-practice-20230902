@@ -1080,7 +1080,6 @@ var userCreditsCache sync.Map    // キー: courses.id, 値: []struct
 var updateMutex sync.Mutex
 
 func UpdateCacheForCourse(DB *sqlx.DB, courseID string) error {
-	time.Sleep(500 * time.Millisecond)
 	updateMutex.Lock()
 	defer updateMutex.Unlock()
 
@@ -1116,23 +1115,23 @@ func UpdateCacheForCourse(DB *sqlx.DB, courseID string) error {
 	}
 
 	// Update userCreditsCache
-	if existing, found := userCreditsCache.Load("userCreditsCache"); found {
+	if existing, found := userCreditsCache.Load(courseID); found {
 		merged := append(existing.([]struct {
 			UserID  string `db:"user_id"`
 			Credits int    `db:"credits"`
 		}), userCredits...)
-		userCreditsCache.Store("userCreditsCache", merged)
+		userCreditsCache.Store(courseID, merged)
 	} else {
-		userCreditsCache.Store("userCreditsCache", userCredits)
+		userCreditsCache.Store(courseID, userCredits)
 	}
 
-	userCreditsCache.Store("userCreditsCache", userCredits)
+	userCreditsCache.Store(courseID, userCredits)
 	// Update weightedScoresCache
-	if existing, found := weightedScoresCache.Load("weightedScoresCache"); found {
+	if existing, found := weightedScoresCache.Load(courseID); found {
 		merged := append(existing.([]float64), weightedScores...)
-		weightedScoresCache.Store("weightedScoresCache", merged)
+		weightedScoresCache.Store(courseID, merged)
 	} else {
-		weightedScoresCache.Store("weightedScoresCache", weightedScores)
+		weightedScoresCache.Store(courseID, weightedScores)
 	}
 
 	return nil
@@ -1327,14 +1326,15 @@ func (h *handlers) SubmitAssignment(c echo.Context) error {
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
-	data, err := io.ReadAll(file)
+	dst := AssignmentsDirectory + classID + "-" + userID + ".pdf"
+	dstFile, err := os.Create(dst)
 	if err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
-
-	dst := AssignmentsDirectory + classID + "-" + userID + ".pdf"
-	if err := os.WriteFile(dst, data, 0666); err != nil {
+	defer dstFile.Close()
+	
+	if _, err := io.Copy(dstFile, file); err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
