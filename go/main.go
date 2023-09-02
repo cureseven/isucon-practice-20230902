@@ -955,6 +955,8 @@ func (h *handlers) SetCourseStatus(c echo.Context) error {
 		return c.String(http.StatusBadRequest, "Invalid format.")
 	}
 
+	SetCourseMutex.Lock()
+	defer SetCourseMutex.Unlock()
 	tx, err := h.DB.Beginx()
 	if err != nil {
 		c.Logger().Error(err)
@@ -976,8 +978,6 @@ func (h *handlers) SetCourseStatus(c echo.Context) error {
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
-	SetCourseMutex.Lock()
-	defer SetCourseMutex.Unlock()
 	if err := tx.Commit(); err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
