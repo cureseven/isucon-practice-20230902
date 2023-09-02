@@ -1080,6 +1080,7 @@ var userCreditsCache sync.Map    // キー: courses.id, 値: []struct
 var updateMutex sync.Mutex
 
 func UpdateCacheForCourse(DB *sqlx.DB, courseID string) error {
+	time.Sleep(200 * time.Millisecond)
 	updateMutex.Lock()
 	defer updateMutex.Unlock()
 
