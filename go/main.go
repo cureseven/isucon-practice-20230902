@@ -1092,9 +1092,10 @@ func UpdateCacheForCourse(DB *sqlx.DB, courseID string) error {
 	query1 := "SELECT users.id AS user_id, SUM(courses.credit) AS credits FROM users " +
 		"JOIN registrations ON users.id = registrations.user_id " +
 		"JOIN courses ON registrations.course_id = courses.id AND courses.id = ? " +
+		" AND courses.status = ?" +
 		"GROUP BY users.id "
 
-	if err := DB.Select(&userCredits, query1, courseID); err != nil {
+	if err := DB.Select(&userCredits, query1, courseID, StatusClosed); err != nil {
 		return err
 	}
 
@@ -1103,33 +1104,33 @@ func UpdateCacheForCourse(DB *sqlx.DB, courseID string) error {
 	query2 := "SELECT IFNULL(SUM(submissions.score * courses.credit), 0) / 100 AS weighted_score " +
 		"FROM users " +
 		"JOIN registrations ON users.id = registrations.user_id " +
-		"JOIN courses ON registrations.course_id = courses.id AND courses.id = ? " +
+		"JOIN courses ON registrations.course_id = courses.id AND courses.id = ? AND courses.status = ? " +
 		"LEFT JOIN classes ON courses.id = classes.course_id " +
 		"LEFT JOIN submissions ON users.id = submissions.user_id AND submissions.class_id = classes.id " +
 		"WHERE users.type = ? " +
 		"GROUP BY users.id "
 
-	if err := DB.Select(&weightedScores, query2, courseID, Student); err != nil {
+	if err := DB.Select(&weightedScores, query2, courseID, StatusClosed, Student); err != nil {
 		return err
 	}
 
 	// Update userCreditsCache
-	if existing, found := userCreditsCache.Load(courseID); found {
+	if existing, found := userCreditsCache.Load("userCreditsCache"); found {
 		merged := append(existing.([]struct {
 			UserID  string `db:"user_id"`
 			Credits int    `db:"credits"`
 		}), userCredits...)
-		userCreditsCache.Store(courseID, merged)
+		userCreditsCache.Store("userCreditsCache", merged)
 	} else {
-		userCreditsCache.Store(courseID, userCredits)
+		userCreditsCache.Store("userCreditsCache", userCredits)
 	}
 
 	// Update weightedScoresCache
-	if existing, found := weightedScoresCache.Load(courseID); found {
+	if existing, found := weightedScoresCache.Load("weightedScoresCache"); found {
 		merged := append(existing.([]float64), weightedScores...)
-		weightedScoresCache.Store(courseID, merged)
+		weightedScoresCache.Store("weightedScoresCache", merged)
 	} else {
-		weightedScoresCache.Store(courseID, weightedScores)
+		weightedScoresCache.Store("weightedScoresCache", weightedScores)
 	}
 
 	return nil
