@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/felixge/fgprof"
 	"github.com/go-sql-driver/mysql"
@@ -937,6 +938,10 @@ func (h *handlers) GetCourseDetail(c echo.Context) error {
 	return c.JSON(http.StatusOK, res)
 }
 
+var (
+	SetCourseMutex = sync.Mutex{}
+)
+
 type SetCourseStatusRequest struct {
 	Status CourseStatus `json:"status"`
 }
@@ -971,6 +976,8 @@ func (h *handlers) SetCourseStatus(c echo.Context) error {
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
+	SetCourseMutex.Lock()
+	defer SetCourseMutex.Unlock()
 	if err := tx.Commit(); err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
