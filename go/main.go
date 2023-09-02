@@ -1,6 +1,7 @@
 package main
 
 import (
+	"archive/zip"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -1264,27 +1266,42 @@ func (h *handlers) DownloadSubmittedAssignments(c echo.Context) error {
 }
 
 func createSubmissionsZip(zipFilePath string, classID string, submissions []Submission) error {
-	tmpDir := AssignmentsDirectory + classID + "/"
-	if err := exec.Command("rm", "-rf", tmpDir).Run(); err != nil {
+	zipFile, err := os.Create(zipFilePath)
+	if err != nil {
 		return err
 	}
-	if err := exec.Command("mkdir", tmpDir).Run(); err != nil {
-		return err
-	}
+	defer zipFile.Close()
 
-	// ファイル名を指定の形式に変更
+	zipWriter := zip.NewWriter(zipFile)
+	defer zipWriter.Close()
+
 	for _, submission := range submissions {
-		if err := exec.Command(
-			"cp",
-			AssignmentsDirectory+classID+"-"+submission.UserID+".pdf",
-			tmpDir+submission.UserCode+"-"+submission.FileName,
-		).Run(); err != nil {
+		srcPath := filepath.Join(AssignmentsDirectory, fmt.Sprintf("%s-%s.pdf", classID, submission.UserID))
+		destFileName := fmt.Sprintf("%s-%s", submission.UserCode, submission.FileName)
+
+		err := addFileToZip(zipWriter, srcPath, destFileName)
+		if err != nil {
 			return err
 		}
 	}
 
-	// -i 'tmpDir/*': 空zipを許す
-	return exec.Command("zip", "-j", "-r", zipFilePath, tmpDir, "-i", tmpDir+"*").Run()
+	return nil
+}
+
+func addFileToZip(zipWriter *zip.Writer, filePath string, zipFileName string) error {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	f, err := zipWriter.Create(zipFileName)
+	if err != nil {
+		return err
+	}
+
+	_, err = io.Copy(f, file)
+	return err
 }
 
 // ---------- Announcement API ----------
