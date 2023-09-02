@@ -808,6 +808,8 @@ func (h *handlers) FetchGPAs(c echo.Context) ([]float64, error) {
 		c.Logger().Error("Cache is empty, something went wrong")
 		return gpas, nil
 	}
+	c.Logger().Error(len(weightedScores))
+	c.Logger().Error(len(userCredits))
 
 	for i, uc := range userCredits {
 		if i >= len(weightedScores) {
@@ -1333,7 +1335,7 @@ func (h *handlers) SubmitAssignment(c echo.Context) error {
 		return c.NoContent(http.StatusInternalServerError)
 	}
 	defer dstFile.Close()
-	
+
 	if _, err := io.Copy(dstFile, file); err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
