@@ -1217,8 +1217,39 @@ func (h *handlers) RegisterScores(c echo.Context) error {
 		return c.String(http.StatusBadRequest, "Invalid format.")
 	}
 
+	// UserCodeからuserIdを一度に取得
+	userCodeToIdMap := make(map[string]int)
+	var userCodes []string
 	for _, score := range req {
-		if _, err := tx.Exec("UPDATE `submissions` JOIN `users` ON `users`.`id` = `submissions`.`user_id` SET `score` = ? WHERE `users`.`code` = ? AND `class_id` = ?", score.Score, score.UserCode, classID); err != nil {
+		userCodes = append(userCodes, score.UserCode)
+	}
+	placeholders := strings.Repeat("?,", len(userCodes)-1) + "?"
+	query := fmt.Sprintf("SELECT `id`, `code` FROM `users` WHERE `code` IN (%s)", placeholders)
+	rows, err := tx.Query(query, userCodes)
+	if err != nil {
+		c.Logger().Error(err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var id int
+		var code string
+		if err := rows.Scan(&id, &code); err != nil {
+			c.Logger().Error(err)
+			return c.NoContent(http.StatusInternalServerError)
+		}
+		userCodeToIdMap[code] = id
+	}
+
+	// userIdを用いてsubmissionsテーブルを更新
+	for _, score := range req {
+		userId, ok := userCodeToIdMap[score.UserCode]
+		if !ok {
+			c.Logger().Error(fmt.Errorf("No userId found for userCode: %s", score.UserCode))
+			continue
+		}
+		if _, err := tx.Exec("UPDATE `submissions` SET `score` = ? WHERE `user_id` = ? AND `class_id` = ?", score.Score, userId, classID); err != nil {
 			c.Logger().Error(err)
 			return c.NoContent(http.StatusInternalServerError)
 		}
