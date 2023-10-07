@@ -27,8 +27,9 @@ kataribe:
 	cd ../ && sudo cat /var/log/nginx/access.log  | ./kataribe	
 
 pprof: TIME=60
-pprof: PROF_FILE=~/pprof.samples.`TZ=Asia/Tokyo date +"%%H%%M"`.`git rev-parse HEAD | cut -c 1-8`.pb.gz
+pprof: PROF_FILE=~/pprof.samples.`TZ=Asia/Tokyo date +"%H%M"`.`git rev-parse HEAD | cut -c 1-8`.pb.gz
 pprof:
+	echo $(PROF_FILE)
 	curl -sSf "http://localhost:6060/debug/fgprof?seconds=$(TIME)" > $(PROF_FILE)
 	go tool pprof $(PROF_FILE)
 
