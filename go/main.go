@@ -579,6 +579,37 @@ func (h *handlers) GetGrades(c echo.Context) error {
 		classIDs = append(classIDs, classID)
 	}
 
+	submissionsCounts := make(map[string]int64)
+	if len(classIDs) > 0 {
+		// クラウスごとの提出数を取得
+		query = `
+			SELECT class_id, COUNT(*) AS count
+			FROM submissions
+			WHERE class_id IN (?)
+			GROUP BY class_id
+		`
+		q, args, err := sqlx.In(query, classIDs)
+		if err != nil {
+			c.Logger().Error(err)
+			return c.NoContent(http.StatusInternalServerError)
+		}
+		rows, err := h.DB.Query(q, args...)
+		if err != nil {
+			c.Logger().Error(err)
+			return c.NoContent(http.StatusInternalServerError)
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var classID string
+			var count int64
+			err := rows.Scan(&classID, &count)
+			if err != nil {
+				c.Logger().Error(err)
+			}
+			submissionsCounts[classID] = count
+		}
+	}
+
 	// 科目毎の成績計算処理
 	courseResults := make([]CourseResult, 0, len(registeredCourses))
 	myGPA := 0.0
