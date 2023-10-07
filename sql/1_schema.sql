@@ -1,4 +1,5 @@
 -- CREATEと逆順
+DROP TABLE IF EXISTS `read_announcements`;
 DROP TABLE IF EXISTS `unread_announcements`;
 DROP TABLE IF EXISTS `announcements`;
 DROP TABLE IF EXISTS `submissions`;
@@ -81,4 +82,12 @@ CREATE TABLE `unread_announcements`
     `is_deleted`      TINYINT(1) NOT NULL DEFAULT false,
     PRIMARY KEY (`user_id`, `announcement_id`),
     CONSTRAINT FK_unread_announcements_announcement_id FOREIGN KEY (`announcement_id`) REFERENCES `announcements` (`id`)
+);
+
+CREATE TABLE `read_announcements`
+(
+    `announcement_id` CHAR(26)   NOT NULL,
+    `user_id`         CHAR(26)   NOT NULL,
+    PRIMARY KEY (`user_id`, `announcement_id`),
+    CONSTRAINT FK_read_announcements_announcement_id FOREIGN KEY (`announcement_id`) REFERENCES `announcements` (`id`)
 );
