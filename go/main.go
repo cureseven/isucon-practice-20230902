@@ -5,17 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"io"
-	"log"
-	"net/http"
-	"net/url"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"sort"
-	"strconv"
-	"strings"
-
 	"github.com/felixge/fgprof"
 	"github.com/go-sql-driver/mysql"
 	"github.com/gorilla/sessions"
@@ -24,7 +13,17 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"golang.org/x/crypto/bcrypt"
+	"io"
+	"log"
+	"net/http"
 	_ "net/http/pprof"
+	"net/url"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
 )
 
 const (
@@ -565,6 +564,19 @@ func (h *handlers) GetGrades(c echo.Context) error {
 	if err := h.DB.Select(&registeredCourses, query, userID); err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
+	}
+
+	// クラスのIDをを抽出
+	classIDsMap := make(map[string]bool)
+	for _, course := range registeredCourses {
+		classIDs := strings.Split(course.ID, ",")
+		for _, classID := range classIDs {
+			classIDsMap[classID] = true
+		}
+	}
+	classIDs := make([]string, 0, len(classIDsMap))
+	for classID := range classIDsMap {
+		classIDs = append(classIDs, classID)
 	}
 
 	// 科目毎の成績計算処理
