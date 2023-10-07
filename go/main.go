@@ -659,28 +659,28 @@ func (h *handlers) GetGrades(c echo.Context) error {
 
 	for _, course := range registeredCourses {
 		// クラスごとの成績計算
+		classes := courseIDToClasses[course.ID]
 		classScores := make([]ClassScore, 0, len(classIDs))
 		myTotalScore := 0
-		for _, classID := range classIDs {
-			subCount := int(submissionsCounts[classID])
-			nullScore := myScores[classID]
+		for _, class := range classes {
+			subCount := int(submissionsCounts[class.ID])
+			nullScore := myScores[class.ID]
 
 			if !nullScore.Valid {
 				classScores = append(classScores, ClassScore{
-					ClassID:    classID,
-					Part:       courseIDToClasses[course.ID][0].Part,
-					Title:      courseIDToClasses[course.ID][0].Title,
+					ClassID:    class.ID,
+					Part:       class.Part,
+					Title:      class.Title,
 					Score:      nil,
 					Submitters: subCount,
 				})
 			} else {
 				score := int(nullScore.Int64)
-				log.Println(classID, score)
 				myTotalScore += score
 				classScores = append(classScores, ClassScore{
-					ClassID:    classID,
-					Part:       courseIDToClasses[course.ID][0].Part,
-					Title:      courseIDToClasses[course.ID][0].Title,
+					ClassID:    class.ID,
+					Part:       class.Part,
+					Title:      class.Title,
 					Score:      &score,
 					Submitters: subCount,
 				})
