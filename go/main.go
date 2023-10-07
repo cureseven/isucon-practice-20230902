@@ -1562,7 +1562,7 @@ func (h *handlers) AddAnnouncement(c echo.Context) error {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
-	if _, err := tx.Exec("INSERT INTO `announcements` (`id`, `course_id`, `courses_name`, `title`, `message`) VALUES (?, ?, ?, ?, ?)",
+	if _, err := tx.Exec("INSERT INTO `announcements` (`id`, `course_id`, `course_name`, `title`, `message`) VALUES (?, ?, ?, ?, ?)",
 		req.ID, req.CourseID, name, req.Title, req.Message); err != nil {
 		_ = tx.Rollback()
 		if mysqlErr, ok := err.(*mysql.MySQLError); ok && mysqlErr.Number == uint16(mysqlErrNumDuplicateEntry) {
