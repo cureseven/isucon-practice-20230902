@@ -25,6 +25,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 const (
@@ -36,8 +37,9 @@ const (
 )
 
 var (
-	gpas      []float64
-	gpasMutex sync.RWMutex = sync.RWMutex{}
+	gpas              []float64
+	gpasMutex         = sync.RWMutex{}
+	reserveUpdateGPAs = make(chan int, 999)
 )
 
 type handlers struct {
@@ -97,6 +99,17 @@ func main() {
 			announcementsAPI.GET("/:announcementID", h.GetAnnouncementDetail)
 		}
 	}
+
+	go func() {
+		for {
+			select {
+			case <-reserveUpdateGPAs:
+				updateGPAs(db)
+			default:
+				time.Sleep(100 * time.Millisecond)
+			}
+		}
+	}()
 
 	e.Logger.Error(e.StartServer(e.Server))
 }
@@ -166,7 +179,7 @@ func (h *handlers) Initialize(c echo.Context) error {
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
-	updateGPAs(dbForInit)
+	reserveUpdateGPAs <- 1
 
 	res := InitializeResponse{
 		Language: "go",
@@ -997,7 +1010,7 @@ func (h *handlers) SetCourseStatus(c echo.Context) error {
 	}
 
 	if req.Status == StatusClosed {
-		updateGPAs(h.DB)
+		reserveUpdateGPAs <- 1
 	}
 
 	return c.NoContent(http.StatusOK)
