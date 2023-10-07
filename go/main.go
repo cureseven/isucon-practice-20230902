@@ -1558,7 +1558,7 @@ func (h *handlers) AddAnnouncement(c echo.Context) error {
 		return c.String(http.StatusNotFound, "No such course.")
 	}
 	var name string
-	if err := tx.Get(&count, "SELECT name FROM `courses` WHERE `id` = ? GROUP BY 1", req.CourseID); err != nil {
+	if err := tx.Get(&name, "SELECT name FROM `courses` WHERE `id` = ? GROUP BY 1", req.CourseID); err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
