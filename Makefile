@@ -22,7 +22,15 @@ truncate-logs:
 	ssh s3 "sudo truncate --size 0 /var/log/mysql/mysql-slow.log"
 	ssh s3 "sudo chmod 777 /var/log/mysql/mysql-slow.log"
 	sudo journalctl --vacuum-size=1K
+
 kataribe: 
 	cd ../ && sudo cat /var/log/nginx/access.log  | ./kataribe	
+
+pprof: TIME=60
+pprof: PROF_FILE=~/pprof.samples.`TZ=Asia/Tokyo date +"%%H%%M"`.`git rev-parse HEAD | cut -c 1-8`.pb.gz
+pprof:
+	curl -sSf "http://localhost:6060/debug/fgprof?seconds=$(TIME)" > $(PROF_FILE)
+	go tool pprof $(PROF_FILE)
+
 bench:
 	ssh bench "cd ./benchmarker/ && ./bin/benchmarker -target 172.31.13.72:443 -tls"
