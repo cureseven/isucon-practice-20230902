@@ -39,6 +39,8 @@ var (
 	gpas              []float64
 	gpasMutex         = sync.RWMutex{}
 	reserveUpdateGPAs = make(chan int, 999)
+	courses           map[string]int
+	courseMutex       sync.RWMutex
 )
 
 type handlers struct {
@@ -107,6 +109,7 @@ func main() {
 			}
 		}
 	}()
+	updateCourses(db)
 
 	e.Logger.Error(e.StartServer(e.Server))
 }
@@ -140,6 +143,26 @@ INNER JOIN student_scores ON student_credits.user_id = student_scores.user_id;`
 	gpasMutex.Lock()
 	gpas = newGpas
 	gpasMutex.Unlock()
+}
+
+func updateCourses(db sqlx.Queryer) {
+	rows, err := db.Queryx("SELECT id FROM `courses`")
+	if err != nil {
+		log.Println("error", err)
+		return
+	}
+
+	courseMutex.Lock()
+	courses = make(map[string]int)
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			log.Println("error", err)
+			return
+		}
+		courses[id] = 1
+	}
+	courseMutex.Unlock()
 }
 
 type InitializeResponse struct {
@@ -177,6 +200,7 @@ func (h *handlers) Initialize(c echo.Context) error {
 	}
 
 	reserveUpdateGPAs <- 1
+	updateCourses(dbForInit)
 
 	res := InitializeResponse{
 		Language: "go",
@@ -990,6 +1014,10 @@ func (h *handlers) AddCourse(c echo.Context) error {
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
+	courseMutex.Lock()
+	courses[courseID] = 1
+	courseMutex.Unlock()
+
 	return c.JSON(http.StatusCreated, AddCourseResponse{ID: courseID})
 }
 
@@ -1102,12 +1130,10 @@ func (h *handlers) GetClasses(c echo.Context) error {
 
 	courseID := c.Param("courseID")
 
-	var count int
-	if err := h.DB.Get(&count, "SELECT COUNT(*) FROM `courses` WHERE `id` = ?", courseID); err != nil {
-		c.Logger().Error(err)
-		return c.NoContent(http.StatusInternalServerError)
-	}
-	if count == 0 {
+	courseMutex.RLock()
+	_, ok := courses[courseID]
+	courseMutex.RUnlock()
+	if !ok {
 		return c.String(http.StatusNotFound, "No such course.")
 	}
 
