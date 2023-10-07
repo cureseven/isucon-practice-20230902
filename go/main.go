@@ -1608,6 +1608,10 @@ func (h *handlers) AddAnnouncement(c echo.Context) error {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
+	if err := tx2.Commit(); err != nil {
+		c.Logger().Error(err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
 
 	return c.NoContent(http.StatusCreated)
 }
