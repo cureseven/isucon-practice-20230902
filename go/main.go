@@ -651,6 +651,7 @@ func (h *handlers) GetGrades(c echo.Context) error {
 			if err != nil {
 				c.Logger().Error(err)
 			}
+			log.Println(classID, score)
 			myScores[classID] = score
 		}
 		defer rows.Close()
