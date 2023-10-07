@@ -704,11 +704,11 @@ func (h *handlers) GetGrades(c echo.Context) error {
 	var gpas []float64
 	query = `
 WITH student_credits AS (
-    SELECT users.id AS user_id, SUM(courses.credit) AS total_credits
-    FROM users
-    INNER JOIN registrations ON users.id = registrations.user_id
-    INNER JOIN courses ON (registrations.course_id = courses.id AND courses.status = 'closed')
-    GROUP BY users.id
+    SELECT registrations.user_id AS user_id, SUM(courses.credit) AS total_credits
+    FROM courses
+    INNER JOIN registrations ON registrations.course_id = courses.id
+    WHERE courses.status = 'closed'
+    group by registrations.user_id),
 ),
 student_scores AS (
     SELECT submissions.user_id, SUM(submissions.score * courses.credit) AS weighted_score
