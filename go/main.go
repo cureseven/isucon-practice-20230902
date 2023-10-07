@@ -705,10 +705,10 @@ func (h *handlers) GetGrades(c echo.Context) error {
 	query = `
 WITH student_credits AS (
     SELECT registrations.user_id AS user_id, SUM(courses.credit) AS total_credits
-    FROM courses
-    INNER JOIN registrations ON registrations.course_id = courses.id
+    FROM registrations
+    INNER JOIN courses ON registrations.course_id = courses.id
     WHERE courses.status = 'closed'
-    group by registrations.user_id),
+    GROUP BY registrations.user_id
 ),
 student_scores AS (
     SELECT submissions.user_id, SUM(submissions.score * courses.credit) AS weighted_score
