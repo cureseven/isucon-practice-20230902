@@ -1493,7 +1493,7 @@ func (h *handlers) GetAnnouncementList(c echo.Context) error {
 
 	var announcementCourses []AnnouncementCourses
 	query = `
-    SELECT courses.id AS courses_it, courses.name AS course_name
+    SELECT courses.id AS courses_id, courses.name AS course_name
     FROM courses
     JOIN registrations ON courses.id = registrations.course_id
     WHERE registrations.user_id = ?
