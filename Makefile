@@ -4,7 +4,7 @@ gogo: stop-services build truncate-logs start-services bench
 
 build:
 	cd go && make all
-	scp go/isucholar s2:/home/isucon/webapp/go/isucholar
+	scp go/isucholar s2:/home/isucon/isucon-practice-20230902/go/isucholar
 
 stop-services:
 	sudo systemctl stop nginx
