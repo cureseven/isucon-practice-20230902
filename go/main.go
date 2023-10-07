@@ -42,7 +42,8 @@ var (
 )
 
 type handlers struct {
-	DB *sqlx.DB
+	DB  *sqlx.DB
+	DB2 *sqlx.DB
 }
 
 func main() {
@@ -62,8 +63,12 @@ func main() {
 	db, _ := GetDB(false)
 	db.SetMaxOpenConns(100)
 
+	db2, _ := GetDB(false)
+	db2.SetMaxOpenConns(100)
+
 	h := &handlers{
-		DB: db,
+		DB:  db,
+		DB2: db2,
 	}
 
 	e.POST("/initialize", h.Initialize)
@@ -1426,6 +1431,11 @@ type GetAnnouncementsResponse struct {
 	Announcements []AnnouncementWithoutDetail `json:"announcements"`
 }
 
+type AnnouncementCourses struct {
+	CourseId   string `db:"course_id"`
+	CourseName string `db:"course_name"`
+}
+
 // GetAnnouncementList GET /api/announcements お知らせ一覧取得
 func (h *handlers) GetAnnouncementList(c echo.Context) error {
 	userID, _, _, err := getUserInfo(c)
@@ -1436,10 +1446,10 @@ func (h *handlers) GetAnnouncementList(c echo.Context) error {
 
 	var announcements []AnnouncementWithoutDetail
 	var args []interface{}
-	query := "SELECT `announcements`.`id`, `courses`.`id` AS `course_id`, `courses`.`name` AS `course_name`, `announcements`.`title`, NOT `unread_announcements`.`is_deleted` AS `unread`" +
+	query := "SELECT `announcements`.`id`, `announcements.course_id` AS `course_id`, '' AS `course_name`, `announcements`.`title`, NOT `unread_announcements`.`is_deleted` AS `unread`" +
 		" FROM `announcements`" +
-		" JOIN `courses` ON `announcements`.`course_id` = `courses`.`id`" +
-		" JOIN `registrations` ON `courses`.`id` = `registrations`.`course_id`" +
+		//" JOIN `courses` ON `announcements`.`course_id` = `courses`.`id`" +
+		//" JOIN `registrations` ON `courses`.`id` = `registrations`.`course_id`" +
 		" JOIN `unread_announcements` ON `announcements`.`id` = `unread_announcements`.`announcement_id`" +
 		" WHERE 1=1"
 
@@ -1449,7 +1459,7 @@ func (h *handlers) GetAnnouncementList(c echo.Context) error {
 	}
 
 	query += " AND `unread_announcements`.`user_id` = ?" +
-		" AND `registrations`.`user_id` = ?" +
+		//" AND `registrations`.`user_id` = ?" +
 		" ORDER BY `announcements`.`id` DESC" +
 		" LIMIT ? OFFSET ?"
 	args = append(args, userID, userID)
@@ -1477,6 +1487,24 @@ func (h *handlers) GetAnnouncementList(c echo.Context) error {
 	if err := h.DB.Get(&unreadCount, "SELECT COUNT(*) FROM `unread_announcements` WHERE `user_id` = ? AND NOT `is_deleted`", userID); err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
+	}
+
+	courseIDs := make([]string, 0, len(announcements))
+	for _, announcement := range announcements {
+		courseIDs = append(courseIDs, announcement.CourseID)
+	}
+
+	var announcementCourses []AnnouncementCourses
+	if err := h.DB.Get(&announcementCourses, "SELECT courses.id AS courses_it, courses.name AS course_name FROM `courses` JOIN `registrations` ON `courses`.`id` = `registrations`.`course_id` WHERE `registrations`.`user_id` = ?", userID); err != nil {
+		c.Logger().Error(err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
+	coursesMap := make(map[string]AnnouncementCourses)
+	for _, course := range announcementCourses {
+		coursesMap[course.CourseId] = course
+	}
+	for id, announcement := range announcements {
+		announcements[id].CourseName = coursesMap[announcement.CourseID].CourseName
 	}
 
 	var links []string
