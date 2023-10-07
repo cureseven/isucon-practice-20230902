@@ -4,21 +4,28 @@ gogo: stop-services build truncate-logs start-services bench
 
 build:
 	cd go && make all
+	scp go/isucholar s2:/home/isucon/webapp/go/isucholar
 
 stop-services:
 	sudo systemctl stop nginx
 	sudo systemctl stop isucholar.go.service
+	ssh s2 "sudo systemctl stop isucholar.go.service"
+	ssh s2 "sudo systemctl stop mysql"
 	ssh s3 "sudo systemctl stop mysql"
 
 start-services:
+	ssh s2 "sudo systemctl start mysql"
 	ssh s3 "sudo systemctl start mysql"
 	sleep 5
 	sudo systemctl start isucholar.go.service
+	ssh s2 "sudo systemctl start isucholar.go.service"
 	sudo systemctl start nginx
 
 truncate-logs:
 	sudo truncate --size 0 /var/log/nginx/access.log
 	sudo truncate --size 0 /var/log/nginx/error.log
+	ssh s2 "sudo truncate --size 0 /var/log/mysql/mysql-slow.log"
+	ssh s2 "sudo chmod 777 /var/log/mysql/mysql-slow.log"
 	ssh s3 "sudo truncate --size 0 /var/log/mysql/mysql-slow.log"
 	ssh s3 "sudo chmod 777 /var/log/mysql/mysql-slow.log"
 	sudo journalctl --vacuum-size=1K
