@@ -704,18 +704,18 @@ func (h *handlers) GetGrades(c echo.Context) error {
 	var gpas []float64
 	query = `
 WITH student_credits AS (
-	SELECT users.id AS user_id, SUM(courses.credit) AS total_credits
-	FROM users
-	INNER JOIN registrations ON users.id = registrations.user_id
-	INNER JOIN courses ON (registrations.course_id = courses.id AND courses.status = 'closed')
-	GROUP BY users.id
+    SELECT users.id AS user_id, SUM(courses.credit) AS total_credits
+    FROM users
+    INNER JOIN registrations ON users.id = registrations.user_id
+    INNER JOIN courses ON (registrations.course_id = courses.id AND courses.status = 'closed')
+    GROUP BY users.id
 ,
 student_scores AS (
     SELECT submissions.user_id, SUM(submissions.score * courses.credit) AS weighted_score
-	FROM submissions
-	INNER JOIN classes ON submissions.class_id = classes.id
-	INNER JOIN courses ON (classes.course_id = courses.id AND courses.status = 'closed')
-	GROUP BY submissions.user_id
+    FROM submissions
+    INNER JOIN classes ON submissions.class_id = classes.id
+    INNER JOIN courses ON (classes.course_id = courses.id AND courses.status = 'closed')
+    GROUP BY submissions.user_id
 )
 
 SELECT student_credits.user_id, (student_scores.weighted_score / student_credits.total_credits / 100) AS GPA
