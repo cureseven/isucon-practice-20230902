@@ -675,6 +675,7 @@ func (h *handlers) GetGrades(c echo.Context) error {
 				})
 			} else {
 				score := int(nullScore.Int64)
+				log.Println(classID, score)
 				myTotalScore += score
 				classScores = append(classScores, ClassScore{
 					ClassID:    classID,
