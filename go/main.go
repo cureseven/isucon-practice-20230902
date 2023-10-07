@@ -599,11 +599,8 @@ func (h *handlers) GetGrades(c echo.Context) error {
 		classIDs = append(classIDs, class.ID)
 	}
 
-	courseResults := make([]CourseResult, 0, len(registeredCourses))
 	submissionsCounts := make(map[string]int64)
 	myScores := make(map[string]sql.NullInt64)
-	myGPA := 0.0
-	myCredits := 0
 	if len(classIDs) > 0 {
 		// クラスごとの提出数を取得
 		query = `
@@ -656,18 +653,23 @@ func (h *handlers) GetGrades(c echo.Context) error {
 		}
 		defer rows.Close()
 	}
-
+	courseResults := make([]CourseResult, 0, len(registeredCourses))
+	myGPA := 0.0
+	myCredits := 0
+	myTotalScores := make(map[string]int)
+	ClassScores := make(map[string][]ClassScore)
 	for _, course := range registeredCourses {
 		// クラスごとの成績計算
 		classes := courseIDToClasses[course.ID]
 		classScores := make([]ClassScore, 0, len(classIDs))
-		myTotalScore := 0
+		ClassScores[course.ID] = classScores
+		myTotalScores[course.ID] = 0
 		for _, class := range classes {
 			subCount := int(submissionsCounts[class.ID])
 			nullScore := myScores[class.ID]
 
 			if !nullScore.Valid {
-				classScores = append(classScores, ClassScore{
+				ClassScores[course.ID] = append(ClassScores[course.ID], ClassScore{
 					ClassID:    class.ID,
 					Part:       class.Part,
 					Title:      class.Title,
@@ -676,8 +678,8 @@ func (h *handlers) GetGrades(c echo.Context) error {
 				})
 			} else {
 				score := int(nullScore.Int64)
-				myTotalScore += score
-				classScores = append(classScores, ClassScore{
+				myTotalScores[course.ID] += score
+				ClassScores[course.ID] = append(ClassScores[course.ID], ClassScore{
 					ClassID:    class.ID,
 					Part:       class.Part,
 					Title:      class.Title,
@@ -686,7 +688,15 @@ func (h *handlers) GetGrades(c echo.Context) error {
 				})
 			}
 		}
+		// 自分のGPA計算
+		if course.Status == StatusClosed {
+			myGPA += float64(myTotalScores[course.ID] * int(course.Credit))
+			myCredits += int(course.Credit)
+		}
+	}
 
+	courseTotals := make(map[string][]int)
+	for _, course := range registeredCourses {
 		// 科目を履修している学生のTotalScore一覧を取得
 		var totals []int
 		query := `
@@ -703,23 +713,21 @@ func (h *handlers) GetGrades(c echo.Context) error {
 			c.Logger().Error(err)
 			return c.NoContent(http.StatusInternalServerError)
 		}
+		courseTotals[course.ID] = totals
+	}
 
+	for _, course := range registeredCourses {
+		totals := courseTotals[course.ID]
 		courseResults = append(courseResults, CourseResult{
 			Name:             course.Name,
 			Code:             course.Code,
-			TotalScore:       myTotalScore,
-			TotalScoreTScore: tScoreInt(myTotalScore, totals),
+			TotalScore:       myTotalScores[course.ID],
+			TotalScoreTScore: tScoreInt(myTotalScores[course.ID], totals),
 			TotalScoreAvg:    averageInt(totals, 0),
 			TotalScoreMax:    maxInt(totals, 0),
 			TotalScoreMin:    minInt(totals, 0),
-			ClassScores:      classScores,
+			ClassScores:      ClassScores[course.ID],
 		})
-
-		// 自分のGPA計算
-		if course.Status == StatusClosed {
-			myGPA += float64(myTotalScore * int(course.Credit))
-			myCredits += int(course.Credit)
-		}
 	}
 
 	if myCredits > 0 {
