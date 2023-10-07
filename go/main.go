@@ -25,7 +25,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 )
 
 const (
@@ -99,15 +98,10 @@ func main() {
 		}
 	}
 
-	go func() {
-		updateGPAs(db)
-		time.Sleep(1000 * time.Millisecond)
-	}()
-
 	e.Logger.Error(e.StartServer(e.Server))
 }
 
-func updateGPAs(db *sqlx.DB) {
+func updateGPAs(db sqlx.Ext) {
 	var newGpas []float64
 	query := `
 WITH student_credits AS (
@@ -128,7 +122,7 @@ student_scores AS (
 SELECT (student_scores.weighted_score / student_credits.total_credits / 100) AS GPA
 FROM student_credits
 INNER JOIN student_scores ON student_credits.user_id = student_scores.user_id;`
-	if err := db.Select(&newGpas, query); err != nil {
+	if err := sqlx.Select(db, &newGpas, query); err != nil {
 		log.Println("error:", err)
 		return
 	}
@@ -1000,6 +994,10 @@ func (h *handlers) SetCourseStatus(c echo.Context) error {
 	if err := tx.Commit(); err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
+	}
+
+	if req.Status == StatusClosed {
+		updateGPAs(h.DB)
 	}
 
 	return c.NoContent(http.StatusOK)
