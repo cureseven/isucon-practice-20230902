@@ -571,19 +571,14 @@ func (h *handlers) GetGrades(c echo.Context) error {
 	}
 
 	// コースIDをを抽出
-	courseIDsMap := make(map[string]bool)
-	for _, course := range registeredCourses {
-		courseIDsMap[course.ID] = true
-	}
-	courseIDs := make([]string, 0, len(courseIDsMap))
-	for classID := range courseIDsMap {
-		courseIDs = append(courseIDs, classID)
+	courseIDs := make([]string, 0, len(registeredCourses))
+	for _, registeredCours := range registeredCourses {
+		courseIDs = append(courseIDs, registeredCours.ID)
 	}
 
 	var classes []Class
 	courseIDToClasses := make(map[string][]Class)
 	if len(courseIDs) > 0 {
-		// IN 句に渡す値を展開するためのクエリを構築
 		query := "SELECT * FROM `classes` WHERE `course_id` IN (?) ORDER BY `part` DESC"
 		query, args, err := sqlx.In(query, courseIDs)
 		if err != nil {
@@ -611,12 +606,9 @@ func (h *handlers) GetGrades(c echo.Context) error {
 	courseResults := make([]CourseResult, 0, len(registeredCourses))
 	submissionsCounts := make(map[string]int64)
 	myScores := make(map[string]sql.NullInt64)
-
 	myGPA := 0.0
 	myCredits := 0
-
 	if len(classIDs) > 0 {
-
 		// クラスごとの提出数を取得
 		query = `
 			SELECT class_id, COUNT(*) AS count
@@ -722,7 +714,7 @@ func (h *handlers) GetGrades(c echo.Context) error {
 		courseResults = append(courseResults, CourseResult{
 			Name:             course.Name,
 			Code:             course.Code,
-			TotalScore:       myTotalScore,
+			TotalScore:       0,
 			TotalScoreTScore: tScoreInt(myTotalScore, totals),
 			TotalScoreAvg:    averageInt(totals, 0),
 			TotalScoreMax:    maxInt(totals, 0),
