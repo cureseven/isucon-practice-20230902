@@ -566,7 +566,7 @@ func (h *handlers) GetGrades(c echo.Context) error {
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
-	// コースIDをを抽出
+	// コースIDを抽出
 	courseIDs := make([]string, 0, len(registeredCourses))
 	for _, registeredCours := range registeredCourses {
 		courseIDs = append(courseIDs, registeredCours.ID)
@@ -622,7 +622,6 @@ func (h *handlers) GetGrades(c echo.Context) error {
 			c.Logger().Error(err)
 			return c.NoContent(http.StatusInternalServerError)
 		}
-		defer rows.Close()
 		for rows.Next() {
 			var classID string
 			var count int64
@@ -632,16 +631,12 @@ func (h *handlers) GetGrades(c echo.Context) error {
 			}
 			submissionsCounts[classID] = count
 		}
+		defer rows.Close()
 
 		// クラスごとの自分のスコアを取得
-		query = `
-			SELECT class_id, score
-			FROM submissions
-			WHERE user_id = ? AND class_id IN (?)
-		`
-		q, args, err = sqlx.In(query, userID, classIDs)
+		q, args, err = sqlx.In("SELECT `class_id`, `submissions`.`score` FROM `submissions` WHERE `user_id` = ? AND `class_id` IN (?)", userID, classIDs)
 		if err != nil {
-			c.Logger().Error(err)
+			c.Logger().Error(err) // oops
 			return c.NoContent(http.StatusInternalServerError)
 		}
 		rows, err = h.DB.Query(q, args...)
@@ -649,7 +644,6 @@ func (h *handlers) GetGrades(c echo.Context) error {
 			c.Logger().Error(err)
 			return c.NoContent(http.StatusInternalServerError)
 		}
-		defer rows.Close()
 		for rows.Next() {
 			var classID string
 			var score sql.NullInt64
@@ -659,6 +653,7 @@ func (h *handlers) GetGrades(c echo.Context) error {
 			}
 			myScores[classID] = score
 		}
+		defer rows.Close()
 	}
 
 	for _, course := range registeredCourses {
