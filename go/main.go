@@ -53,7 +53,7 @@ func main() {
 	}()
 	e := echo.New()
 	e.Debug = GetEnv("DEBUG", "") == "true"
-	e.Server.Addr = fmt.Sprintf(":%v", GetEnv("PORT", "7000"))
+	e.Server.Addr = fmt.Sprintf("0.0.0.0:%v", GetEnv("PORT", "7000"))
 	e.HideBanner = true
 
 	//e.Use(middleware.Logger())
