@@ -44,7 +44,7 @@ func main() {
 		log.Println(http.ListenAndServe(":6060", nil))
 	}()
 	e := echo.New()
-	//e.Debug = GetEnv("DEBUG", "") == "true"
+	e.Debug = GetEnv("DEBUG", "") == "true"
 	e.Server.Addr = fmt.Sprintf(":%v", GetEnv("PORT", "7000"))
 	e.HideBanner = true
 
