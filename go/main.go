@@ -709,7 +709,7 @@ WITH student_credits AS (
     INNER JOIN registrations ON users.id = registrations.user_id
     INNER JOIN courses ON (registrations.course_id = courses.id AND courses.status = 'closed')
     GROUP BY users.id
-,
+),
 student_scores AS (
     SELECT submissions.user_id, SUM(submissions.score * courses.credit) AS weighted_score
     FROM submissions
