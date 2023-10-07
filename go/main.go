@@ -154,6 +154,7 @@ type InitializeResponse struct {
 // Initialize POST /initialize 初期化エンドポイント
 func (h *handlers) Initialize(c echo.Context) error {
 	dbForInit, _ := GetDB(true)
+	db2ForInit, _ := GetDB2(true)
 
 	files := []string{
 		"1_schema.sql",
@@ -167,6 +168,10 @@ func (h *handlers) Initialize(c echo.Context) error {
 			return c.NoContent(http.StatusInternalServerError)
 		}
 		if _, err := dbForInit.Exec(string(data)); err != nil {
+			c.Logger().Error(err)
+			return c.NoContent(http.StatusInternalServerError)
+		}
+		if _, err := db2ForInit.Exec(string(data)); err != nil {
 			c.Logger().Error(err)
 			return c.NoContent(http.StatusInternalServerError)
 		}
