@@ -557,14 +557,10 @@ func (h *handlers) GetGrades(c echo.Context) error {
 
 	// 履修している科目一覧取得
 	var registeredCourses []Course
-	query := `
-		SELECT c.*
-		FROM registrations r
-		JOIN courses c ON r.course_id = c.id
-		LEFT JOIN classes cl ON c.id = cl.course_id
-		WHERE r.user_id = ?
-		GROUP BY c.id
-	`
+	query := "SELECT `courses`.*" +
+		" FROM `registrations`" +
+		" JOIN `courses` ON `registrations`.`course_id` = `courses`.`id`" +
+		" WHERE `user_id` = ?"
 	if err := h.DB.Select(&registeredCourses, query, userID); err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
@@ -683,9 +679,6 @@ func (h *handlers) GetGrades(c echo.Context) error {
 				})
 			} else {
 				score := int(nullScore.Int64)
-				c.Logger().Info("------------")
-				c.Logger().Info(score)
-				c.Logger().Info("------------")
 				myTotalScore += score
 				classScores = append(classScores, ClassScore{
 					ClassID:    classID,
