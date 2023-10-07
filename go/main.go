@@ -1649,6 +1649,10 @@ func (h *handlers) GetAnnouncementDetail(c echo.Context) error {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
+	if _, err := h.DB2.Exec("INSERT INTO `read_announcements` (`announcement_id`, `user_id`) VALUES (?,?) ON DUPLICATE KEY UPDATE `announcements` = VALUES(`announcement_id`)", announcementID, userID); err != nil {
+		c.Logger().Error(err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
 
 	return c.JSON(http.StatusOK, announcement)
 }
