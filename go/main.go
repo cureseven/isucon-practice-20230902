@@ -714,7 +714,7 @@ func (h *handlers) GetGrades(c echo.Context) error {
 		courseResults = append(courseResults, CourseResult{
 			Name:             course.Name,
 			Code:             course.Code,
-			TotalScore:       0,
+			TotalScore:       myTotalScore,
 			TotalScoreTScore: tScoreInt(myTotalScore, totals),
 			TotalScoreAvg:    averageInt(totals, 0),
 			TotalScoreMax:    maxInt(totals, 0),
