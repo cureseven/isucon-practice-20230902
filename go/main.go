@@ -718,7 +718,7 @@ student_scores AS (
     GROUP BY submissions.user_id
 )
 
-SELECT student_credits.user_id, (student_scores.weighted_score / student_credits.total_credits / 100) AS GPA
+SELECT (student_scores.weighted_score / student_credits.total_credits / 100) AS GPA
 FROM student_credits
 INNER JOIN student_scores ON student_credits.user_id = student_scores.user_id;`
 	if err := h.DB.Select(&gpas, query); err != nil {
