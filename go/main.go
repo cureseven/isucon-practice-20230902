@@ -24,6 +24,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 )
 
 const (
@@ -32,6 +34,12 @@ const (
 	InitDataDirectory         = "../data/"
 	SessionName               = "isucholar_go"
 	mysqlErrNumDuplicateEntry = 1062
+)
+
+var (
+	gpas              []float64
+	gpasMutex         = sync.RWMutex{}
+	reserveUpdateGPAs = make(chan int, 999)
 )
 
 type handlers struct {
@@ -92,7 +100,49 @@ func main() {
 		}
 	}
 
+	go func() {
+		for {
+			select {
+			case <-reserveUpdateGPAs:
+				updateGPAs(db)
+			default:
+				time.Sleep(100 * time.Millisecond)
+			}
+		}
+	}()
+
 	e.Logger.Error(e.StartServer(e.Server))
+}
+
+func updateGPAs(db sqlx.Ext) {
+	var newGpas []float64
+	query := `
+WITH student_credits AS (
+    SELECT users.id AS user_id, SUM(courses.credit) AS total_credits
+    FROM users
+    INNER JOIN registrations ON users.id = registrations.user_id
+    INNER JOIN courses ON (registrations.course_id = courses.id AND courses.status = 'closed')
+    GROUP BY users.id
+),
+student_scores AS (
+    SELECT submissions.user_id, SUM(submissions.score * courses.credit) AS weighted_score
+    FROM submissions
+    INNER JOIN classes ON submissions.class_id = classes.id
+    INNER JOIN courses ON (classes.course_id = courses.id AND courses.status = 'closed')
+    GROUP BY submissions.user_id
+)
+
+SELECT (student_scores.weighted_score / student_credits.total_credits / 100) AS GPA
+FROM student_credits
+INNER JOIN student_scores ON student_credits.user_id = student_scores.user_id;`
+	if err := sqlx.Select(db, &newGpas, query); err != nil {
+		log.Println("error:", err)
+		return
+	}
+
+	gpasMutex.Lock()
+	gpas = newGpas
+	gpasMutex.Unlock()
 }
 
 type InitializeResponse struct {
@@ -128,6 +178,8 @@ func (h *handlers) Initialize(c echo.Context) error {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
+
+	reserveUpdateGPAs <- 1
 
 	res := InitializeResponse{
 		Language: "go",
@@ -734,33 +786,7 @@ func (h *handlers) GetGrades(c echo.Context) error {
 		myGPA = myGPA / 100 / float64(myCredits)
 	}
 
-	// GPAの統計値
-	// 一つでも修了した科目がある学生のGPA一覧
-	var gpas []float64
-	query = `
-WITH student_credits AS (
-    SELECT users.id AS user_id, SUM(courses.credit) AS total_credits
-    FROM users
-    INNER JOIN registrations ON users.id = registrations.user_id
-    INNER JOIN courses ON (registrations.course_id = courses.id AND courses.status = 'closed')
-    GROUP BY users.id
-),
-student_scores AS (
-    SELECT submissions.user_id, SUM(submissions.score * courses.credit) AS weighted_score
-    FROM submissions
-    INNER JOIN classes ON submissions.class_id = classes.id
-    INNER JOIN courses ON (classes.course_id = courses.id AND courses.status = 'closed')
-    GROUP BY submissions.user_id
-)
-
-SELECT (student_scores.weighted_score / student_credits.total_credits / 100) AS GPA
-FROM student_credits
-INNER JOIN student_scores ON student_credits.user_id = student_scores.user_id;`
-	if err := h.DB.Select(&gpas, query); err != nil {
-		c.Logger().Error(err)
-		return c.NoContent(http.StatusInternalServerError)
-	}
-
+	gpasMutex.RLock()
 	res := GetGradeResponse{
 		Summary: Summary{
 			Credits:   myCredits,
@@ -772,6 +798,7 @@ INNER JOIN student_scores ON student_credits.user_id = student_scores.user_id;`
 		},
 		CourseResults: courseResults,
 	}
+	gpasMutex.RUnlock()
 
 	return c.JSON(http.StatusOK, res)
 }
@@ -1016,6 +1043,10 @@ func (h *handlers) SetCourseStatus(c echo.Context) error {
 	if err := tx.Commit(); err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
+	}
+
+	if req.Status == StatusClosed {
+		reserveUpdateGPAs <- 1
 	}
 
 	return c.NoContent(http.StatusOK)
