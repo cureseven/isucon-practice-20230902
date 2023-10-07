@@ -69,9 +69,9 @@ CREATE TABLE `announcements`
 (
     `id`         CHAR(26) PRIMARY KEY,
     `course_id`  CHAR(26)     NOT NULL,
-    `name`       VARCHAR(255) NOT NULL,
+    `courses_name`       VARCHAR(255) NOT NULL,
     `title`      VARCHAR(255) NOT NULL,
-    `message`    TEXT         NOT NULL,
+    `message`    TEXT         NOT NULL
 );
 
 CREATE TABLE `unread_announcements`
