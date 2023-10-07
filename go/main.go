@@ -702,22 +702,26 @@ func (h *handlers) GetGrades(c echo.Context) error {
 	// GPAの統計値
 	// 一つでも修了した科目がある学生のGPA一覧
 	var gpas []float64
-	query = "SELECT IFNULL(SUM(`submissions`.`score` * `courses`.`credit`), 0) / 100 / `credits`.`credits` AS `gpa`" +
-		" FROM `users`" +
-		" JOIN (" +
-		"     SELECT `users`.`id` AS `user_id`, SUM(`courses`.`credit`) AS `credits`" +
-		"     FROM `users`" +
-		"     JOIN `registrations` ON `users`.`id` = `registrations`.`user_id`" +
-		"     JOIN `courses` ON `registrations`.`course_id` = `courses`.`id` AND `courses`.`status` = ?" +
-		"     GROUP BY `users`.`id`" +
-		" ) AS `credits` ON `credits`.`user_id` = `users`.`id`" +
-		" JOIN `registrations` ON `users`.`id` = `registrations`.`user_id`" +
-		" JOIN `courses` ON `registrations`.`course_id` = `courses`.`id` AND `courses`.`status` = ?" +
-		" LEFT JOIN `classes` ON `courses`.`id` = `classes`.`course_id`" +
-		" LEFT JOIN `submissions` ON `users`.`id` = `submissions`.`user_id` AND `submissions`.`class_id` = `classes`.`id`" +
-		" WHERE `users`.`type` = ?" +
-		" GROUP BY `users`.`id`"
-	if err := h.DB.Select(&gpas, query, StatusClosed, StatusClosed, Student); err != nil {
+	query = `
+WITH student_credits AS (
+    SELECT users.id AS user_id, SUM(courses.credit) AS total_credits
+    FROM users
+    INNER JOIN registrations ON users.id = registrations.user_id
+    INNER JOIN courses ON (registrations.course_id = courses.id AND courses.status = 'closed')
+    GROUP BY users.id
+),
+student_scores AS (
+    SELECT submissions.user_id, SUM(submissions.score * courses.credit) AS weighted_score
+    FROM submissions
+    INNER JOIN classes ON submissions.class_id = classes.id
+    INNER JOIN courses ON (classes.course_id = courses.id AND courses.status = 'closed')
+    GROUP BY submissions.user_id
+)
+
+SELECT (student_scores.weighted_score / student_credits.total_credits / 100) AS GPA
+FROM student_credits
+INNER JOIN student_scores ON student_credits.user_id = student_scores.user_id;`
+	if err := h.DB.Select(&gpas, query); err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
