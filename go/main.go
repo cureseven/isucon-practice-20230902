@@ -1492,7 +1492,7 @@ func (h *handlers) GetAnnouncementList(c echo.Context) error {
 	}
 
 	var announcementCourses []AnnouncementCourses
-	if err := h.DB.Select(&announcementCourses, "SELECT courses.id AS courses_it, courses.name AS course_name FROM `courses` JOIN `registrations` ON `courses`.`id` = `registrations`.`course_id` WHERE `registrations`.`user_id` = ?", userID); err != nil {
+	if err := h.DB.Select(&announcementCourses, "SELECT courses.id AS courses_id, courses.name AS course_name FROM `courses` JOIN `registrations` ON `courses`.`id` = `registrations`.`course_id` WHERE `registrations`.`user_id` = ?", userID); err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
