@@ -100,10 +100,16 @@ func main() {
 	}
 
 	go func() {
-		// 1秒ごとにGPAsを更新する
-		for {
-			var newGpas []float64
-			query := `
+		updateGPAs(db)
+		time.Sleep(1000 * time.Millisecond)
+	}()
+
+	e.Logger.Error(e.StartServer(e.Server))
+}
+
+func updateGPAs(db *sqlx.DB) {
+	var newGpas []float64
+	query := `
 WITH student_credits AS (
     SELECT users.id AS user_id, SUM(courses.credit) AS total_credits
     FROM users
@@ -122,17 +128,14 @@ student_scores AS (
 SELECT (student_scores.weighted_score / student_credits.total_credits / 100) AS GPA
 FROM student_credits
 INNER JOIN student_scores ON student_credits.user_id = student_scores.user_id;`
-			if err := db.Select(&newGpas, query); err != nil {
-				log.Println("error:", err)
-			}
-			gpasMutex.Lock()
-			gpas = newGpas
-			gpasMutex.Unlock()
-			time.Sleep(1000 * time.Millisecond)
-		}
-	}()
+	if err := db.Select(&newGpas, query); err != nil {
+		log.Println("error:", err)
+		return
+	}
 
-	e.Logger.Error(e.StartServer(e.Server))
+	gpasMutex.Lock()
+	gpas = newGpas
+	gpasMutex.Unlock()
 }
 
 type InitializeResponse struct {
@@ -168,6 +171,8 @@ func (h *handlers) Initialize(c echo.Context) error {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
+
+	updateGPAs(dbForInit)
 
 	res := InitializeResponse{
 		Language: "go",
