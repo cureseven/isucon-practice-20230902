@@ -63,7 +63,7 @@ func main() {
 	db, _ := GetDB(false)
 	db.SetMaxOpenConns(100)
 
-	db2, _ := GetDB(false)
+	db2, _ := GetDB2(false)
 	db2.SetMaxOpenConns(100)
 
 	h := &handlers{
