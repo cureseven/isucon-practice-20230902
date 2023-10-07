@@ -25,7 +25,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 )
 
 const (
@@ -105,8 +104,6 @@ func main() {
 			select {
 			case <-reserveUpdateGPAs:
 				updateGPAs(db)
-			default:
-				time.Sleep(100 * time.Millisecond)
 			}
 		}
 	}()
