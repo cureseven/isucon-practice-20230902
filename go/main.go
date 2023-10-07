@@ -580,6 +580,7 @@ func (h *handlers) GetGrades(c echo.Context) error {
 	}
 
 	submissionsCounts := make(map[string]int64)
+	myScores := make(map[string]sql.NullInt64)
 	if len(classIDs) > 0 {
 		// クラウスごとの提出数を取得
 		query = `
@@ -607,6 +608,33 @@ func (h *handlers) GetGrades(c echo.Context) error {
 				c.Logger().Error(err)
 			}
 			submissionsCounts[classID] = count
+		}
+
+		// クラスごとの自分のスコアを取得
+		query = `
+			SELECT class_id, score 
+			FROM submissions
+			WHERE user_id = ? AND class_id IN (?)
+		`
+		q, args, err = sqlx.In(query, userID, classIDs)
+		if err != nil {
+			c.Logger().Error(err)
+			return c.NoContent(http.StatusInternalServerError)
+		}
+		rows, err = h.DB.Query(q, args...)
+		if err != nil {
+			c.Logger().Error(err)
+			return c.NoContent(http.StatusInternalServerError)
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var classID string
+			var score sql.NullInt64
+			err := rows.Scan(&classID, &score)
+			if err != nil {
+				c.Logger().Error(err)
+			}
+			myScores[classID] = score
 		}
 	}
 
