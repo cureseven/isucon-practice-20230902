@@ -102,7 +102,7 @@ func main() {
 	go func() {
 		// 1秒ごとにGPAsを更新する
 		for {
-			gpasMutex.Lock()
+			var newGpas []float64
 			query := `
 WITH student_credits AS (
     SELECT users.id AS user_id, SUM(courses.credit) AS total_credits
@@ -122,9 +122,11 @@ student_scores AS (
 SELECT (student_scores.weighted_score / student_credits.total_credits / 100) AS GPA
 FROM student_credits
 INNER JOIN student_scores ON student_credits.user_id = student_scores.user_id;`
-			if err := db.Select(&gpas, query); err != nil {
+			if err := db.Select(&newGpas, query); err != nil {
 				log.Println("error:", err)
 			}
+			gpasMutex.Lock()
+			gpas = newGpas
 			gpasMutex.Unlock()
 			time.Sleep(1 * time.Second)
 		}
