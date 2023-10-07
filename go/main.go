@@ -1557,9 +1557,13 @@ func (h *handlers) AddAnnouncement(c echo.Context) error {
 	if count == 0 {
 		return c.String(http.StatusNotFound, "No such course.")
 	}
-
-	if _, err := tx.Exec("INSERT INTO `announcements` (`id`, `course_id`, `title`, `message`) VALUES (?, ?, ?, ?)",
-		req.ID, req.CourseID, req.Title, req.Message); err != nil {
+	var name string
+	if err := tx.Get(&count, "SELECT name FROM `courses` WHERE `id` = ? GROUP BY 1", req.CourseID); err != nil {
+		c.Logger().Error(err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
+	if _, err := tx.Exec("INSERT INTO `announcements` (`id`, `course_id`, `courses_name`, `title`, `message`) VALUES (?, ?, ?, ?, ?)",
+		req.ID, req.CourseID, name, req.Title, req.Message); err != nil {
 		_ = tx.Rollback()
 		if mysqlErr, ok := err.(*mysql.MySQLError); ok && mysqlErr.Number == uint16(mysqlErrNumDuplicateEntry) {
 			var announcement Announcement
