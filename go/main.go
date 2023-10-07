@@ -1431,11 +1431,6 @@ type GetAnnouncementsResponse struct {
 	Announcements []AnnouncementWithoutDetail `json:"announcements"`
 }
 
-type AnnouncementCourses struct {
-	CourseId   string `db:"course_id"`
-	CourseName string `db:"course_name"`
-}
-
 // GetAnnouncementList GET /api/announcements お知らせ一覧取得
 func (h *handlers) GetAnnouncementList(c echo.Context) error {
 	userID, _, _, err := getUserInfo(c)
@@ -1446,7 +1441,7 @@ func (h *handlers) GetAnnouncementList(c echo.Context) error {
 
 	var announcements []AnnouncementWithoutDetail
 	var args []interface{}
-	query := "SELECT `announcements`.`id`, `announcements`.`course_id` AS `course_id`, '' AS `course_name`, `announcements`.`title`, NOT `unread_announcements`.`is_deleted` AS `unread`" +
+	query := "SELECT `announcements`.`id`, `announcements`.`course_id` AS `course_id`, `announcements`.`course_name` AS `course_name`, `announcements`.`title`, NOT `unread_announcements`.`is_deleted` AS `unread`" +
 		" FROM `announcements`" +
 		" JOIN `unread_announcements` ON `announcements`.`id` = `unread_announcements`.`announcement_id`" +
 		" WHERE 1=1"
@@ -1489,25 +1484,6 @@ func (h *handlers) GetAnnouncementList(c echo.Context) error {
 	courseIDs := make([]string, 0, len(announcements))
 	for _, announcement := range announcements {
 		courseIDs = append(courseIDs, announcement.CourseID)
-	}
-
-	var announcementCourses []AnnouncementCourses
-	query = `
-    SELECT courses.id AS course_id, courses.name AS course_name
-    FROM courses
-    JOIN registrations ON courses.id = registrations.course_id
-    WHERE registrations.user_id = ?
-`
-	if err := h.DB.Select(&announcementCourses, query, userID); err != nil {
-		c.Logger().Error(err)
-		return c.NoContent(http.StatusInternalServerError)
-	}
-	coursesMap := make(map[string]AnnouncementCourses)
-	for _, course := range announcementCourses {
-		coursesMap[course.CourseId] = course
-	}
-	for id, announcement := range announcements {
-		announcements[id].CourseName = coursesMap[announcement.CourseID].CourseName
 	}
 
 	var links []string
@@ -1644,9 +1620,8 @@ func (h *handlers) GetAnnouncementDetail(c echo.Context) error {
 	announcementID := c.Param("announcementID")
 
 	var announcement AnnouncementDetail
-	query := "SELECT `announcements`.`id`, `courses`.`id` AS `course_id`, `courses`.`name` AS `course_name`, `announcements`.`title`, `announcements`.`message`, NOT `unread_announcements`.`is_deleted` AS `unread`" +
+	query := "SELECT `announcements`.`id`, `courses`.`id` AS `course_id`, `announcements`.`course_name` AS `course_name`, `announcements`.`title`, `announcements`.`message`, NOT `unread_announcements`.`is_deleted` AS `unread`" +
 		" FROM `announcements`" +
-		" JOIN `courses` ON `courses`.`id` = `announcements`.`course_id`" +
 		" JOIN `unread_announcements` ON `unread_announcements`.`announcement_id` = `announcements`.`id`" +
 		" WHERE `announcements`.`id` = ?" +
 		" AND `unread_announcements`.`user_id` = ?"
