@@ -583,11 +583,20 @@ func (h *handlers) GetGrades(c echo.Context) error {
 	var classes []Class
 	courseIDToClasses := make(map[string][]Class)
 	if len(courseIDs) > 0 {
+		// IN 句に渡す値を展開するためのクエリを構築
 		query := "SELECT * FROM `classes` WHERE `course_id` IN (?) ORDER BY `part` DESC"
-		if err := h.DB.Select(&classes, query, courseIDs); err != nil {
+		query, args, err := sqlx.In(query, courseIDs)
+		if err != nil {
 			c.Logger().Error(err)
 			return c.NoContent(http.StatusInternalServerError)
 		}
+
+		// 展開したクエリと引数を使って講義情報を取得
+		if err := h.DB.Select(&classes, query, args...); err != nil {
+			c.Logger().Error(err)
+			return c.NoContent(http.StatusInternalServerError)
+		}
+
 		// 講義情報をcourseIDToClassesマップに格納
 		for _, class := range classes {
 			courseID := class.CourseID
@@ -731,7 +740,7 @@ func (h *handlers) GetGrades(c echo.Context) error {
 	if myCredits > 0 {
 		myGPA = myGPA / 100 / float64(myCredits)
 	}
-	
+
 	// GPAの統計値
 	// 一つでも修了した科目がある学生のGPA一覧
 	var gpas []float64
