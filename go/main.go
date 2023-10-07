@@ -707,48 +707,62 @@ func (h *handlers) GetGrades(c echo.Context) error {
 	myCredits := 0
 	myTotalScores := make(map[string]int)
 	ClassScores := make(map[string][]ClassScore)
-	for _, course := range registeredCourses {
-		// クラスごとの成績計算
-		classes := courseIDToClasses[course.ID]
-		classScores := make([]ClassScore, 0, len(classIDs))
-		ClassScores[course.ID] = classScores
-		myTotalScores[course.ID] = 0
-		for _, class := range classes {
-			subCount := int(submissionsCounts[class.ID])
-			nullScore := myScores[class.ID]
-
-			if !nullScore.Valid {
-				ClassScores[course.ID] = append(ClassScores[course.ID], ClassScore{
-					ClassID:    class.ID,
-					Part:       class.Part,
-					Title:      class.Title,
-					Score:      nil,
-					Submitters: subCount,
-				})
-			} else {
-				score := int(nullScore.Int64)
-				myTotalScores[course.ID] += score
-				ClassScores[course.ID] = append(ClassScores[course.ID], ClassScore{
-					ClassID:    class.ID,
-					Part:       class.Part,
-					Title:      class.Title,
-					Score:      &score,
-					Submitters: subCount,
-				})
-			}
-		}
-		// 自分のGPA計算
-		if course.Status == StatusClosed {
-			myGPA += float64(myTotalScores[course.ID] * int(course.Credit))
-			myCredits += int(course.Credit)
-		}
-	}
-
 	courseTotals := make(map[string][]int)
+	var wg sync.WaitGroup
+	var mu sync.Mutex
 	for _, course := range registeredCourses {
-		// 科目を履修している学生のTotalScore一覧を取得
-		var totals []int
-		query := `
+		wg.Add(1)
+
+		go func(course Course) {
+			defer wg.Done()
+
+			classes := courseIDToClasses[course.ID]
+			classScores := make([]ClassScore, 0, len(classIDs))
+			myTotalScore := 0
+			for _, class := range classes {
+				subCount := int(submissionsCounts[class.ID])
+				nullScore := myScores[class.ID]
+
+				if !nullScore.Valid {
+					classScores = append(classScores, ClassScore{
+						ClassID:    class.ID,
+						Part:       class.Part,
+						Title:      class.Title,
+						Score:      nil,
+						Submitters: subCount,
+					})
+				} else {
+					score := int(nullScore.Int64)
+					myTotalScore += score
+					classScores = append(classScores, ClassScore{
+						ClassID:    class.ID,
+						Part:       class.Part,
+						Title:      class.Title,
+						Score:      &score,
+						Submitters: subCount,
+					})
+				}
+			}
+
+			mu.Lock()
+			ClassScores[course.ID] = classScores
+			myTotalScores[course.ID] = myTotalScore
+			mu.Unlock()
+
+			if course.Status == StatusClosed {
+				myGPA += float64(myTotalScore * int(course.Credit))
+				myCredits += int(course.Credit)
+			}
+		}(course)
+	}
+	errCh := make(chan error, len(registeredCourses))
+	for _, course := range registeredCourses {
+		wg.Add(1)
+
+		go func(course Course) {
+			defer wg.Done()
+			var totals []int
+			query := `
         SELECT IFNULL(SUM(s.score), 0) AS total_score
         FROM users u
         JOIN registrations r ON u.id = r.user_id
@@ -758,13 +772,23 @@ func (h *handlers) GetGrades(c echo.Context) error {
         WHERE c.id = ?
         GROUP BY u.id
     `
-		if err := h.DB.Select(&totals, query, course.ID); err != nil {
-			c.Logger().Error(err)
-			return c.NoContent(http.StatusInternalServerError)
-		}
-		courseTotals[course.ID] = totals
+			if err := h.DB.Select(&totals, query, course.ID); err != nil {
+				c.Logger().Error(err)
+				errCh <- err
+			}
+
+			mu.Lock()
+			courseTotals[course.ID] = totals
+			mu.Unlock()
+		}(course)
 	}
 
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		c.Logger().Error(err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
 	for _, course := range registeredCourses {
 		totals := courseTotals[course.ID]
 		courseResults = append(courseResults, CourseResult{
