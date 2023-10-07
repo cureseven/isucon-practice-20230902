@@ -128,7 +128,7 @@ INNER JOIN student_scores ON student_credits.user_id = student_scores.user_id;`
 			gpasMutex.Lock()
 			gpas = newGpas
 			gpasMutex.Unlock()
-			time.Sleep(1 * time.Second)
+			time.Sleep(1000 * time.Millisecond)
 		}
 	}()
 
@@ -736,33 +736,6 @@ func (h *handlers) GetGrades(c echo.Context) error {
 	}
 	if myCredits > 0 {
 		myGPA = myGPA / 100 / float64(myCredits)
-	}
-
-	// GPAの統計値
-	// 一つでも修了した科目がある学生のGPA一覧
-	var gpas []float64
-	query = `
-WITH student_credits AS (
-    SELECT registrations.user_id AS user_id, SUM(courses.credit) AS total_credits
-    FROM registrations
-    INNER JOIN courses ON registrations.course_id = courses.id
-    WHERE courses.status = 'closed'
-    GROUP BY registrations.user_id
-),
-student_scores AS (
-    SELECT submissions.user_id, SUM(submissions.score * courses.credit) AS weighted_score
-    FROM submissions
-    INNER JOIN classes ON submissions.class_id = classes.id
-    INNER JOIN courses ON (classes.course_id = courses.id AND courses.status = 'closed')
-    GROUP BY submissions.user_id
-)
-
-SELECT (student_scores.weighted_score / student_credits.total_credits / 100) AS GPA
-FROM student_credits
-INNER JOIN student_scores ON student_credits.user_id = student_scores.user_id;`
-	if err := h.DB.Select(&gpas, query); err != nil {
-		c.Logger().Error(err)
-		return c.NoContent(http.StatusInternalServerError)
 	}
 
 	gpasMutex.RLock()
