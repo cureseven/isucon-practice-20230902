@@ -39,6 +39,7 @@ var (
 	gpas              []float64
 	gpasMutex         = sync.RWMutex{}
 	reserveUpdateGPAs = make(chan int, 999)
+	teacherMap        = sync.Map{}
 )
 
 type handlers struct {
@@ -104,6 +105,10 @@ func main() {
 		}
 	}
 
+	if err := updateTeacherMap(db); err != nil {
+		panic(err)
+	}
+
 	go func() {
 		for {
 			select {
@@ -114,6 +119,19 @@ func main() {
 	}()
 
 	e.Logger.Error(e.StartServer(e.Server))
+}
+
+func updateTeacherMap(db sqlx.Queryer) error {
+	var ts []User
+	if err := sqlx.Select(db, &ts, "SELECT * FROM `users` WHERE `type` = 'teacher'"); err != nil {
+		return err
+	}
+
+	for _, t := range ts {
+		teacherMap.Store(t.ID, t)
+	}
+
+	return nil
 }
 
 func updateGPAs(db sqlx.Ext) {
@@ -442,11 +460,12 @@ func (h *handlers) GetRegisteredCourses(c echo.Context) error {
 	// 履修科目が0件の時は空配列を返却
 	res := make([]GetRegisteredCourseResponseContent, 0, len(courses))
 	for _, course := range courses {
-		var teacher User
-		if err := h.DB.Get(&teacher, "SELECT * FROM `users` WHERE `id` = ?", course.TeacherID); err != nil {
-			c.Logger().Error(err)
+		t, ok := teacherMap.Load(course.TeacherID)
+		if !ok {
+			c.Logger().Error("teacher not found")
 			return c.NoContent(http.StatusInternalServerError)
 		}
+		teacher := t.(User)
 
 		res = append(res, GetRegisteredCourseResponseContent{
 			ID:        course.ID,
