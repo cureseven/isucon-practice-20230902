@@ -1487,6 +1487,7 @@ func (h *handlers) GetAnnouncementList(c echo.Context) error {
 		" FROM `announcements`" +
 		" LEFT JOIN `unread_announcements` ON `announcements`.`id` = `unread_announcements`.`announcement_id` AND `unread_announcements`.`user_id` = ?" +
 		" WHERE 1=1"
+	args = append(args, userID)
 
 	if courseID := c.QueryParam("course_id"); courseID != "" {
 		query += " AND `announcements`.`course_id` = ?"
@@ -1495,7 +1496,6 @@ func (h *handlers) GetAnnouncementList(c echo.Context) error {
 
 	query += " ORDER BY `announcements`.`id` DESC" +
 		" LIMIT ? OFFSET ?"
-	args = append(args, userID)
 
 	var page int
 	if c.QueryParam("page") == "" {
