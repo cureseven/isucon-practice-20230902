@@ -3,6 +3,7 @@ DROP TABLE IF EXISTS `unread_announcements`;
 DROP TABLE IF EXISTS `announcements`;
 DROP TABLE IF EXISTS `submissions`;
 DROP TABLE IF EXISTS `classes`;
+DROP TABLE IF EXISTS `class_insert_counts`;
 DROP TABLE IF EXISTS `registrations`;
 DROP TABLE IF EXISTS `courses`;
 DROP TABLE IF EXISTS `users`;
@@ -53,6 +54,32 @@ CREATE TABLE `classes`
     UNIQUE KEY `idx_classes_course_id_part` (`course_id`, `part`),
     CONSTRAINT FK_classes_course_id FOREIGN KEY (`course_id`) REFERENCES `courses` (`id`)
 );
+
+CREATE TABLE `class_insert_counts`
+(
+    `course_id` CHAR(26) PRIMARY KEY,
+    `insert_count` INT UNSIGNED NOT NULL DEFAULT 0
+);
+
+DELIMITER //
+CREATE TRIGGER after_class_insert
+    AFTER INSERT ON `classes`
+    FOR EACH ROW
+BEGIN
+    DECLARE countExists BOOLEAN;
+    SET countExists = EXISTS (SELECT 1 FROM class_insert_counts WHERE course_id = NEW.course_id);
+
+    IF countExists THEN
+    UPDATE class_insert_counts
+    SET insert_count = insert_count + 1
+    WHERE course_id = NEW.course_id;
+    ELSE
+        INSERT INTO class_insert_counts (course_id, insert_count)
+        VALUES (NEW.course_id, 1);
+END IF;
+END;
+//
+DELIMITER ;
 
 CREATE TABLE `submissions`
 (
