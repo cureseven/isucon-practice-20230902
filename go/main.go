@@ -151,8 +151,6 @@ type InitializeResponse struct {
 	Language string `json:"language"`
 }
 
-var courseIDCache map[string]bool
-var courseCacheMutex sync.RWMutex
 var courseCache = sync.Map{}
 
 // Initialize POST /initialize 初期化エンドポイント
@@ -204,9 +202,7 @@ func (h *handlers) Initialize(c echo.Context) error {
 	}
 
 	courseCache = newCache
-
-	courseCacheMutex.Unlock()
-
+	
 	// classesCashの初期化
 	classesCash = make(map[string][]GetClassResponse)
 
