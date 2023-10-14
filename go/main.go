@@ -1224,7 +1224,7 @@ func (h *handlers) SubmitAssignment(c echo.Context) error {
 	classID := c.Param("classID")
 
 	var status CourseStatus
-	if err := h.DB.Get(&status, "SELECT `status` FROM `courses` WHERE `id` = ? FOR SHARE", courseID); err != nil && err != sql.ErrNoRows {
+	if err := h.DB.Get(&status, "SELECT `status` FROM `courses` WHERE `id` = ?", courseID); err != nil && err != sql.ErrNoRows {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	} else if err == sql.ErrNoRows {
@@ -1244,7 +1244,7 @@ func (h *handlers) SubmitAssignment(c echo.Context) error {
 	}
 
 	var submissionClosed bool
-	if err := h.DB.Get(&submissionClosed, "SELECT `submission_closed` FROM `classes` WHERE `id` = ? FOR SHARE", classID); err != nil && err != sql.ErrNoRows {
+	if err := h.DB.Get(&submissionClosed, "SELECT `submission_closed` FROM `classes` WHERE `id` = ?", classID); err != nil && err != sql.ErrNoRows {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	} else if err == sql.ErrNoRows {
