@@ -188,19 +188,18 @@ func (h *handlers) Initialize(c echo.Context) error {
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
+	reserveUpdateGPAs <- 1
+
+	courseIDCache = make(map[string]bool)
+
 	ids, err := GetCourseIDs(h.DB) // GetCourseIDsは前述の関数を使用
 	if err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
-
-	courseIDCache = make(map[string]bool)
 	for _, id := range ids {
 		courseIDCache[id] = true
 	}
-
-	reserveUpdateGPAs <- 1
-
 	res := InitializeResponse{
 		Language: "go",
 	}
@@ -1574,8 +1573,12 @@ func (h *handlers) AddAnnouncement(c echo.Context) error {
 	}
 	defer tx.Rollback()
 	defer tx2.Rollback()
-
-	if !CheckCourseIDExists(req.CourseID) {
+	var count int
+	if err := tx.Get(&count, "SELECT COUNT(*) FROM `courses` WHERE `id` = ?", req.CourseID); err != nil {
+		c.Logger().Error(err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
+	if count == 0 {
 		return c.String(http.StatusNotFound, "No such course.")
 	}
 	var name string
