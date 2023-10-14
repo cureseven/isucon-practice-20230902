@@ -773,14 +773,12 @@ func (h *handlers) GetGrades(c echo.Context) error {
 			defer wg.Done()
 			var totals []int
 			query := `
-        SELECT IFNULL(SUM(s.score), 0) AS total_score
-        FROM users u
-        JOIN registrations r ON u.id = r.user_id
-        JOIN courses c ON r.course_id = c.id
-        LEFT JOIN classes cl ON c.id = cl.course_id
-        LEFT JOIN submissions s ON u.id = s.user_id AND s.class_id = cl.id
-        WHERE c.id = ?
-        GROUP BY u.id
+SELECT IFNULL(SUM(s.score), 0) AS total_score
+FROM courses AS c
+INNER JOIN classes AS cl ON c.id = cl.course_id
+INNER JOIN submissions AS s ON cl.id = s.class_id
+WHERE c.id = ?
+GROUP BY s.user_id;
     `
 			if err := h.DB.Select(&totals, query, course.ID); err != nil {
 				c.Logger().Error(err)
