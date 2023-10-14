@@ -61,26 +61,6 @@ CREATE TABLE `class_insert_counts`
     `insert_count` INT UNSIGNED NOT NULL DEFAULT 0
 );
 
-DELIMITER //
-CREATE TRIGGER after_class_insert
-    AFTER INSERT ON `classes`
-    FOR EACH ROW
-BEGIN
-    DECLARE countExists BOOLEAN;
-    SET countExists = EXISTS (SELECT 1 FROM class_insert_counts WHERE course_id = NEW.course_id);
-
-    IF countExists THEN
-    UPDATE class_insert_counts
-    SET insert_count = insert_count + 1
-    WHERE course_id = NEW.course_id;
-    ELSE
-        INSERT INTO class_insert_counts (course_id, insert_count)
-        VALUES (NEW.course_id, 1);
-END IF;
-END;
-//
-DELIMITER ;
-
 CREATE TABLE `submissions`
 (
     `user_id`   CHAR(26)     NOT NULL,
@@ -109,3 +89,23 @@ CREATE TABLE `unread_announcements`
     PRIMARY KEY (`user_id`, `announcement_id`),
     CONSTRAINT FK_unread_announcements_announcement_id FOREIGN KEY (`announcement_id`) REFERENCES `announcements` (`id`)
 );
+
+DELIMITER //
+CREATE TRIGGER after_class_insert
+    AFTER INSERT ON `classes`
+    FOR EACH ROW
+BEGIN
+    DECLARE countExists BOOLEAN;
+    SET countExists = EXISTS (SELECT 1 FROM class_insert_counts WHERE course_id = NEW.course_id);
+
+    IF countExists THEN
+    UPDATE class_insert_counts
+    SET insert_count = insert_count + 1
+    WHERE course_id = NEW.course_id;
+    ELSE
+        INSERT INTO class_insert_counts (course_id, insert_count)
+        VALUES (NEW.course_id, 1);
+END IF;
+END;
+//
+DELIMITER ;
