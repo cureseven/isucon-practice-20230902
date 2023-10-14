@@ -1113,7 +1113,7 @@ func (h *handlers) GetClasses(c echo.Context) error {
 	courseID := c.Param("courseID")
 
 	var count int
-	if err := h.DB.Get(&count, "SELECT insert_count AS COUNTS FROM `class_insert_counts` WHERE `id` = ?", courseID); err != nil {
+	if err := h.DB.Get(&count, "SELECT insert_count AS COUNTS FROM `class_insert_counts` WHERE `course_id` = ?", courseID); err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
@@ -1175,7 +1175,7 @@ func (h *handlers) AddClass(c echo.Context) error {
 	defer tx.Rollback()
 
 	var course Course
-	if err := tx.Get(&course, "SELECT * FROM `courses` WHERE `course_id` = ? FOR SHARE", courseID); err != nil && err != sql.ErrNoRows {
+	if err := tx.Get(&course, "SELECT * FROM `courses` WHERE `id` = ? FOR SHARE", courseID); err != nil && err != sql.ErrNoRows {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	} else if err == sql.ErrNoRows {
