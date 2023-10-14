@@ -90,7 +90,7 @@ CREATE TABLE `unread_announcements`
     CONSTRAINT FK_unread_announcements_announcement_id FOREIGN KEY (`announcement_id`) REFERENCES `announcements` (`id`)
 );
 
-DELIMITER //
+
 CREATE TRIGGER after_class_insert
     AFTER INSERT ON `classes`
     FOR EACH ROW
@@ -107,5 +107,3 @@ BEGIN
         VALUES (NEW.course_id, 1);
 END IF;
 END;
-//
-DELIMITER ;
