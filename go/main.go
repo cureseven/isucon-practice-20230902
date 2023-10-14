@@ -223,9 +223,12 @@ func SetCourseIDs(course_id string) {
 
 func CheckCourseIDExists(courseID string) bool {
 	// キャッシュをチェック
+	courseCacheMutex.RLock()
 	if exists, found := courseIDCache[courseID]; found {
+		courseCacheMutex.RUnlock()
 		return exists
 	}
+	courseCacheMutex.RUnlock()
 	return false
 }
 
@@ -1436,7 +1439,20 @@ func addFileToZip(zipWriter *zip.Writer, filePath string, zipFileName string) er
 	}
 	defer file.Close()
 
-	f, err := zipWriter.Create(zipFileName)
+	info, err := file.Stat()
+	if err != nil {
+		return err
+	}
+
+	header, err := zip.FileInfoHeader(info)
+	if err != nil {
+		return err
+	}
+
+	header.Method = zip.Store
+	header.Name = zipFileName
+
+	f, err := zipWriter.CreateHeader(header)
 	if err != nil {
 		return err
 	}
