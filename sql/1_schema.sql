@@ -3,6 +3,7 @@ DROP TABLE IF EXISTS `unread_announcements`;
 DROP TABLE IF EXISTS `announcements`;
 DROP TABLE IF EXISTS `submissions`;
 DROP TABLE IF EXISTS `classes`;
+DROP TABLE IF EXISTS `class_insert_counts`;
 DROP TABLE IF EXISTS `registrations`;
 DROP TABLE IF EXISTS `courses`;
 DROP TABLE IF EXISTS `users`;
@@ -54,6 +55,12 @@ CREATE TABLE `classes`
     CONSTRAINT FK_classes_course_id FOREIGN KEY (`course_id`) REFERENCES `courses` (`id`)
 );
 
+CREATE TABLE `class_insert_counts`
+(
+    `course_id` CHAR(26) PRIMARY KEY,
+    `insert_count` INT UNSIGNED NOT NULL DEFAULT 0
+);
+
 CREATE TABLE `submissions`
 (
     `user_id`   CHAR(26)     NOT NULL,
@@ -82,3 +89,13 @@ CREATE TABLE `unread_announcements`
     PRIMARY KEY (`user_id`, `announcement_id`),
     CONSTRAINT FK_unread_announcements_announcement_id FOREIGN KEY (`announcement_id`) REFERENCES `announcements` (`id`)
 );
+
+
+CREATE TRIGGER after_class_insert
+    AFTER INSERT ON `classes`
+    FOR EACH ROW
+BEGIN
+    INSERT INTO class_insert_counts (course_id, insert_count)
+    VALUES (NEW.course_id, 1)
+        ON DUPLICATE KEY UPDATE insert_count = insert_count + 1;
+END;
