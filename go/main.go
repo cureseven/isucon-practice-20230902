@@ -3,6 +3,7 @@ package main
 import (
 	"archive/zip"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/felixge/fgprof"
@@ -46,12 +47,30 @@ type handlers struct {
 	DB2 *sqlx.DB
 }
 
+type JSONSerializer struct{}
+
+func (j *JSONSerializer) Serialize(c echo.Context, i interface{}, indent string) error {
+	enc := json.NewEncoder(c.Response())
+	return enc.Encode(i)
+}
+
+func (j *JSONSerializer) Deserialize(c echo.Context, i interface{}) error {
+	err := json.NewDecoder(c.Request().Body).Decode(i)
+	if ute, ok := err.(*json.UnmarshalTypeError); ok {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Unmarshal type error: expected=%v, got=%v, field=%v, offset=%v", ute.Type, ute.Value, ute.Field, ute.Offset)).SetInternal(err)
+	} else if se, ok := err.(*json.SyntaxError); ok {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Syntax error: offset=%v, error=%v", se.Offset, se.Error())).SetInternal(err)
+	}
+	return err
+}
+
 func main() {
 	http.DefaultServeMux.Handle("/debug/fgprof", fgprof.Handler())
 	go func() {
 		log.Println(http.ListenAndServe(":6060", nil))
 	}()
 	e := echo.New()
+	e.JSONSerializer = &JSONSerializer{}
 	//e.Debug = GetEnv("DEBUG", "") == "true"
 	e.Server.Addr = fmt.Sprintf("0.0.0.0:%v", GetEnv("PORT", "7000"))
 	e.HideBanner = true
