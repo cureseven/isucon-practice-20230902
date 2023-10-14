@@ -95,15 +95,7 @@ CREATE TRIGGER after_class_insert
     AFTER INSERT ON `classes`
     FOR EACH ROW
 BEGIN
-    DECLARE countExists BOOLEAN;
-    SET countExists = EXISTS (SELECT 1 FROM class_insert_counts WHERE course_id = NEW.course_id);
-
-    IF countExists THEN
-    UPDATE class_insert_counts
-    SET insert_count = insert_count + 1
-    WHERE course_id = NEW.course_id;
-    ELSE
-        INSERT INTO class_insert_counts (course_id, insert_count)
-        VALUES (NEW.course_id, 1);
-END IF;
+    INSERT INTO class_insert_counts (course_id, insert_count)
+    VALUES (NEW.course_id, 1)
+        ON DUPLICATE KEY UPDATE insert_count = insert_count + 1;
 END;
