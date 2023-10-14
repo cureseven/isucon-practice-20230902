@@ -3,11 +3,11 @@ package main
 import (
 	"archive/zip"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/felixge/fgprof"
 	"github.com/go-sql-driver/mysql"
+	"github.com/goccy/go-json"
 	"github.com/gorilla/sessions"
 	"github.com/jmoiron/sqlx"
 	"github.com/labstack/echo-contrib/session"
