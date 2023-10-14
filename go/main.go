@@ -25,6 +25,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 const (
@@ -1483,9 +1484,9 @@ func (h *handlers) GetAnnouncementList(c echo.Context) error {
 
 	var announcements []AnnouncementWithoutDetail
 	var args []interface{}
-	query := "SELECT `announcements`.`id`, `announcements`.`course_id` AS `course_id`, `announcements`.`course_name` AS `course_name`, `announcements`.`title`, NOT `unread_announcements`.`is_deleted` AS `unread`" +
+	query := "SELECT `announcements`.`id`, `announcements`.`course_id` AS `course_id`, `announcements`.`course_name` AS `course_name`, `announcements`.`title`, `unread_announcements`.`announcement_id` IS NOT NULL AS `unread`" +
 		" FROM `announcements`" +
-		" JOIN `unread_announcements` ON `announcements`.`id` = `unread_announcements`.`announcement_id`" +
+		" LEFT JOIN `unread_announcements` ON `announcements`.`id` = `unread_announcements`.`announcement_id` AND `unread_announcements`.`user_id` = ?" +
 		" WHERE 1=1"
 
 	if courseID := c.QueryParam("course_id"); courseID != "" {
@@ -1493,8 +1494,9 @@ func (h *handlers) GetAnnouncementList(c echo.Context) error {
 		args = append(args, courseID)
 	}
 
-	query += " AND `unread_announcements`.`user_id` = ?" +
-		" ORDER BY `announcements`.`id` DESC" +
+	time.Sleep(time.Millisecond * 500)
+
+	query += " ORDER BY `announcements`.`id` DESC" +
 		" LIMIT ? OFFSET ?"
 	args = append(args, userID)
 
@@ -1518,7 +1520,7 @@ func (h *handlers) GetAnnouncementList(c echo.Context) error {
 	}
 
 	var unreadCount int
-	if err := h.DB2.Get(&unreadCount, "SELECT COUNT(*) FROM `unread_announcements` WHERE `user_id` = ? AND NOT `is_deleted`", userID); err != nil {
+	if err := h.DB2.Get(&unreadCount, "SELECT COUNT(*) FROM `unread_announcements` WHERE `user_id` = ?", userID); err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
@@ -1672,12 +1674,11 @@ func (h *handlers) GetAnnouncementDetail(c echo.Context) error {
 	announcementID := c.Param("announcementID")
 
 	var announcement AnnouncementDetail
-	query := "SELECT `announcements`.`id`, `announcements`.`course_id` AS `course_id`, `announcements`.`course_name` AS `course_name`, `announcements`.`title`, `announcements`.`message`, NOT `unread_announcements`.`is_deleted` AS `unread`" +
+	query := "SELECT `announcements`.`id`, `announcements`.`course_id` AS `course_id`, `announcements`.`course_name` AS `course_name`, `announcements`.`title`, `announcements`.`message`, `unread_announcements`.`announcement_id` IS NOT NULL AS `unread`" +
 		" FROM `announcements`" +
-		" JOIN `unread_announcements` ON `unread_announcements`.`announcement_id` = `announcements`.`id`" +
-		" WHERE `announcements`.`id` = ?" +
-		" AND `unread_announcements`.`user_id` = ?"
-	if err := h.DB2.Get(&announcement, query, announcementID, userID); err != nil && err != sql.ErrNoRows {
+		" LEFT JOIN `unread_announcements` ON `unread_announcements`.`announcement_id` = `announcements`.`id` AND `unread_announcements`.`user_id` = ?" +
+		" WHERE `announcements`.`id` = ?"
+	if err := h.DB2.Get(&announcement, query, userID, announcementID); err != nil && err != sql.ErrNoRows {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	} else if err == sql.ErrNoRows {
@@ -1693,7 +1694,7 @@ func (h *handlers) GetAnnouncementDetail(c echo.Context) error {
 		return c.String(http.StatusNotFound, "No such announcement.")
 	}
 
-	if _, err := h.DB2.Exec("UPDATE `unread_announcements` SET `is_deleted` = true WHERE `announcement_id` = ? AND `user_id` = ?", announcementID, userID); err != nil {
+	if _, err := h.DB2.Exec("DELETE FROM `unread_announcements` WHERE `announcement_id` = ? AND `user_id` = ?", announcementID, userID); err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
