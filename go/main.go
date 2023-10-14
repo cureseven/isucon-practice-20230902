@@ -152,6 +152,7 @@ type InitializeResponse struct {
 }
 
 var courseIDCache map[string]bool
+var courseCacheMutex sync.RWMutex
 
 // Initialize POST /initialize 初期化エンドポイント
 func (h *handlers) Initialize(c echo.Context) error {
@@ -190,16 +191,17 @@ func (h *handlers) Initialize(c echo.Context) error {
 
 	reserveUpdateGPAs <- 1
 
-	courseIDCache = make(map[string]bool)
-
-	ids, err := GetCourseIDs(h.DB) // GetCourseIDsは前述の関数を使用
+	ids, err := GetCourseIDs(h.DB)
 	if err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
+	courseCacheMutex.Lock()
+	courseIDCache = make(map[string]bool)
 	for _, id := range ids {
 		courseIDCache[id] = true
 	}
+	courseCacheMutex.Unlock()
 	res := InitializeResponse{
 		Language: "go",
 	}
@@ -214,13 +216,18 @@ func GetCourseIDs(db *sqlx.DB) ([]string, error) {
 	return ids, nil
 }
 func SetCourseIDs(course_id string) {
+	courseCacheMutex.Lock()
 	courseIDCache[course_id] = true
+	courseCacheMutex.Unlock()
 }
+
 func CheckCourseIDExists(courseID string) bool {
 	// キャッシュをチェック
+	courseCacheMutex.Lock()
 	if exists, found := courseIDCache[courseID]; found {
 		return exists
 	}
+	courseCacheMutex.Unlock()
 	return false
 }
 
@@ -1007,6 +1014,7 @@ func (h *handlers) AddCourse(c echo.Context) error {
 	if req.Type != LiberalArts && req.Type != MajorSubjects {
 		return c.String(http.StatusBadRequest, "Invalid course type.")
 	}
+
 	if !contains(daysOfWeek, req.DayOfWeek) {
 		return c.String(http.StatusBadRequest, "Invalid day of week.")
 	}
