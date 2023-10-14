@@ -1113,7 +1113,7 @@ func (h *handlers) GetClasses(c echo.Context) error {
 	courseID := c.Param("courseID")
 
 	var count int
-	if err := h.DB.Get(&count, "SELECT COUNT(*) FROM `courses` WHERE `id` = ?", courseID); err != nil {
+	if err := h.DB.Get(&count, "SELECT 1 FROM `courses` WHERE `id` = ? LIMIT 1", courseID); err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
