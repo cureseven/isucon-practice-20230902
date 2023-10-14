@@ -223,11 +223,9 @@ func SetCourseIDs(course_id string) {
 
 func CheckCourseIDExists(courseID string) bool {
 	// キャッシュをチェック
-	courseCacheMutex.Lock()
 	if exists, found := courseIDCache[courseID]; found {
 		return exists
 	}
-	courseCacheMutex.Unlock()
 	return false
 }
 
