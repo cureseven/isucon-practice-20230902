@@ -153,6 +153,7 @@ type InitializeResponse struct {
 
 var courseIDCache map[string]bool
 var courseCacheMutex sync.RWMutex
+var courseCache = sync.Map{}
 
 // Initialize POST /initialize 初期化エンドポイント
 func (h *handlers) Initialize(c echo.Context) error {
@@ -191,42 +192,56 @@ func (h *handlers) Initialize(c echo.Context) error {
 
 	reserveUpdateGPAs <- 1
 
-	ids, err := GetCourseIDs(h.DB)
+	courses, err := GetCourses(h.DB)
 	if err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
-	courseCacheMutex.Lock()
-	courseIDCache = make(map[string]bool)
-	for _, id := range ids {
-		courseIDCache[id] = true
+
+	newCache := sync.Map{}
+	for _, id := range courses {
+		newCache.Store(id, true)
 	}
+
+	courseCache = newCache
+
 	courseCacheMutex.Unlock()
+
+	// classesCashの初期化
+	classesCash = make(map[string][]GetClassResponse)
+
 	res := InitializeResponse{
 		Language: "go",
 	}
 	return c.JSON(http.StatusOK, res)
 }
 
-func GetCourseIDs(db *sqlx.DB) ([]string, error) {
-	var ids []string
-	if err := db.Select(&ids, "SELECT id FROM courses"); err != nil {
+func GetCourses(db *sqlx.DB) ([]Course, error) {
+	var courses []Course
+	if err := db.Select(&courses, "SELECT * FROM courses"); err != nil {
 		return nil, err
 	}
-	return ids, nil
+	return courses, nil
 }
-func SetCourseIDs(course_id string) {
-	courseCacheMutex.Lock()
-	courseIDCache[course_id] = true
-	courseCacheMutex.Unlock()
+
+func SetCourseIDs(courseID string) {
+	courseCache.Store(courseID, true)
 }
 
 func CheckCourseIDExists(courseID string) bool {
 	// キャッシュをチェック
-	if exists, found := courseIDCache[courseID]; found {
-		return exists
+	_, found := courseCache.Load(courseID)
+	return found
+}
+
+func GetCourseByID(courseID string) (*Course, bool) {
+	// キャッシュからコースを取得
+	if course, found := courseCache.Load(courseID); found {
+		if c, ok := course.(*Course); ok {
+			return c, true
+		}
 	}
-	return false
+	return nil, false
 }
 
 // IsLoggedIn ログイン確認用middleware
@@ -1100,6 +1115,9 @@ func (h *handlers) SetCourseStatus(c echo.Context) error {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
+	course, _ := GetCourseByID(courseID)
+	course.Status = req.Status
+	courseCache.Store(courseID, course)
 
 	if err := tx.Commit(); err != nil {
 		c.Logger().Error(err)
@@ -1132,6 +1150,8 @@ type GetClassResponse struct {
 	Submitted        bool   `json:"submitted"`
 }
 
+var classesCash = make(map[string][]GetClassResponse)
+
 // GetClasses GET /api/courses/:courseID/classes 科目に紐づく講義一覧の取得
 func (h *handlers) GetClasses(c echo.Context) error {
 	userID, _, _, err := getUserInfo(c)
@@ -1143,6 +1163,10 @@ func (h *handlers) GetClasses(c echo.Context) error {
 	courseID := c.Param("courseID")
 	if !CheckCourseIDExists(courseID) {
 		return c.String(http.StatusNotFound, "No such course.")
+	}
+
+	if course, _ := GetCourseByID(courseID); course.Status == StatusClosed {
+		return c.JSON(http.StatusOK, classesCash[courseID])
 	}
 
 	var classes []ClassWithSubmitted
@@ -1167,6 +1191,10 @@ func (h *handlers) GetClasses(c echo.Context) error {
 			SubmissionClosed: class.SubmissionClosed,
 			Submitted:        class.Submitted,
 		})
+	}
+	course, _ := GetCourseByID(courseID)
+	if course.Status == StatusClosed {
+		classesCash[courseID] = res
 	}
 
 	return c.JSON(http.StatusOK, res)
