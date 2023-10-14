@@ -151,6 +151,9 @@ type InitializeResponse struct {
 	Language string `json:"language"`
 }
 
+var courseIDCache map[string]bool
+var courseCacheMutex sync.RWMutex
+
 // Initialize POST /initialize 初期化エンドポイント
 func (h *handlers) Initialize(c echo.Context) error {
 	dbForInit, _ := GetDB(true)
@@ -188,10 +191,42 @@ func (h *handlers) Initialize(c echo.Context) error {
 
 	reserveUpdateGPAs <- 1
 
+	ids, err := GetCourseIDs(h.DB)
+	if err != nil {
+		c.Logger().Error(err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
+	courseCacheMutex.Lock()
+	courseIDCache = make(map[string]bool)
+	for _, id := range ids {
+		courseIDCache[id] = true
+	}
+	courseCacheMutex.Unlock()
 	res := InitializeResponse{
 		Language: "go",
 	}
 	return c.JSON(http.StatusOK, res)
+}
+
+func GetCourseIDs(db *sqlx.DB) ([]string, error) {
+	var ids []string
+	if err := db.Select(&ids, "SELECT id FROM courses"); err != nil {
+		return nil, err
+	}
+	return ids, nil
+}
+func SetCourseIDs(course_id string) {
+	courseCacheMutex.Lock()
+	courseIDCache[course_id] = true
+	courseCacheMutex.Unlock()
+}
+
+func CheckCourseIDExists(courseID string) bool {
+	// キャッシュをチェック
+	if exists, found := courseIDCache[courseID]; found {
+		return exists
+	}
+	return false
 }
 
 // IsLoggedIn ログイン確認用middleware
@@ -977,6 +1012,7 @@ func (h *handlers) AddCourse(c echo.Context) error {
 	if req.Type != LiberalArts && req.Type != MajorSubjects {
 		return c.String(http.StatusBadRequest, "Invalid course type.")
 	}
+
 	if !contains(daysOfWeek, req.DayOfWeek) {
 		return c.String(http.StatusBadRequest, "Invalid day of week.")
 	}
@@ -999,7 +1035,7 @@ func (h *handlers) AddCourse(c echo.Context) error {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
-
+	SetCourseIDs(courseID)
 	return c.JSON(http.StatusCreated, AddCourseResponse{ID: courseID})
 }
 
@@ -1056,13 +1092,7 @@ func (h *handlers) SetCourseStatus(c echo.Context) error {
 		return c.NoContent(http.StatusInternalServerError)
 	}
 	defer tx.Rollback()
-
-	var count int
-	if err := tx.Get(&count, "SELECT COUNT(*) FROM `courses` WHERE `id` = ? FOR UPDATE", courseID); err != nil {
-		c.Logger().Error(err)
-		return c.NoContent(http.StatusInternalServerError)
-	}
-	if count == 0 {
+	if !CheckCourseIDExists(courseID) {
 		return c.String(http.StatusNotFound, "No such course.")
 	}
 
@@ -1111,13 +1141,7 @@ func (h *handlers) GetClasses(c echo.Context) error {
 	}
 
 	courseID := c.Param("courseID")
-
-	var count int
-	if err := h.DB.Get(&count, "SELECT COUNT(*) FROM `courses` WHERE `id` = ?", courseID); err != nil {
-		c.Logger().Error(err)
-		return c.NoContent(http.StatusInternalServerError)
-	}
-	if count == 0 {
+	if !CheckCourseIDExists(courseID) {
 		return c.String(http.StatusNotFound, "No such course.")
 	}
 
@@ -1555,7 +1579,6 @@ func (h *handlers) AddAnnouncement(c echo.Context) error {
 	}
 	defer tx.Rollback()
 	defer tx2.Rollback()
-
 	var count int
 	if err := tx.Get(&count, "SELECT COUNT(*) FROM `courses` WHERE `id` = ?", req.CourseID); err != nil {
 		c.Logger().Error(err)
