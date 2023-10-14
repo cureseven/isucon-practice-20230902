@@ -25,7 +25,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 )
 
 const (
@@ -1493,8 +1492,6 @@ func (h *handlers) GetAnnouncementList(c echo.Context) error {
 		query += " AND `announcements`.`course_id` = ?"
 		args = append(args, courseID)
 	}
-
-	time.Sleep(time.Millisecond * 500)
 
 	query += " ORDER BY `announcements`.`id` DESC" +
 		" LIMIT ? OFFSET ?"
