@@ -1620,11 +1620,18 @@ func (h *handlers) AddAnnouncement(c echo.Context) error {
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
+	values := make([]string, 0, len(targets))
+	args := make([]interface{}, 0, len(targets)*2)
 	for _, user := range targets {
-		if _, err := tx2.Exec("INSERT INTO `unread_announcements` (`announcement_id`, `user_id`) VALUES (?, ?)", req.ID, user.ID); err != nil {
-			c.Logger().Error(err)
-			return c.NoContent(http.StatusInternalServerError)
-		}
+		values = append(values, "(?, ?)")
+		args = append(args, req.ID, user.ID)
+	}
+
+	query = "INSERT INTO `unread_announcements` (`announcement_id`, `user_id`) VALUES " + strings.Join(values, ", ")
+
+	if _, err := tx2.Exec(query, args...); err != nil {
+		c.Logger().Error(err)
+		return c.NoContent(http.StatusInternalServerError)
 	}
 
 	if err := tx.Commit(); err != nil {
